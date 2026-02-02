@@ -96,13 +96,13 @@ Add to your MCP settings (`~/.claude/settings.json`):
 }
 ```
 
-**Bonus:** Copy the skill files from `SKILL/` to your Claude Code skills directory for enhanced After Effects automation:
+**Bonus:** This repo includes a **Claude Code Skill** for enhanced After Effects automation. Copy the skill files to your Claude Code skills directory:
 
 ```bash
 cp -r SKILL/* ~/.claude/skills/
 ```
 
-The skill provides Claude Code with specialized knowledge about After Effects workflows, property formats, and best practices. See [`SKILL/SKILL.md`](SKILL/SKILL.md) for details.
+The Claude Code skill provides specialized knowledge about After Effects workflows, property formats, and best practices. See [`SKILL/SKILL.md`](SKILL/SKILL.md) for details.
 </details>
 
 ### Step 4: Launch After Effects
@@ -238,7 +238,7 @@ ae-mcp/
 │   ├── CSXS/manifest.xml
 │   ├── jsx/host.jsx              # ExtendScript host
 │   └── js/main.js                # Panel JavaScript
-├── SKILL/                        # Claude Code skill files
+├── SKILL/                        # Claude Code skill
 │   ├── SKILL.md                  # Skill definition
 │   └── examples.md               # Animation examples
 └── scripts/                      # Installation scripts
