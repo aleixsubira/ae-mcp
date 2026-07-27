@@ -7,7 +7,9 @@
 
 // Global state
 var AEMCP = {
-  commandsFolder: null,
+  commandsFolder: null,   // primary folder (where a current server writes)
+  folders: [],            // every folder we watch, primary first
+  folderSource: "default",
   processedCommands: {},
   pollInterval: 100, // ms
   isRunning: false,
@@ -15,19 +17,163 @@ var AEMCP = {
 };
 
 /**
+ * Candidate application-support folders for ae-mcp, most trusted first.
+ *
+ * Folder.userData is documented as ~/Library/Application Support on macOS and
+ * %APPDATA% on Windows, which is what commandsDir.ts computes server-side. We
+ * do NOT bet the bridge on that being exact: the canonical macOS path is added
+ * as a second candidate. A silent server/panel mismatch is indistinguishable
+ * from "After Effects is not responding", so redundancy is cheap here.
+ */
+function aemcpAppSupportCandidates() {
+  var list = [];
+
+  function push(path) {
+    if (!path) return;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] === path) return;
+    }
+    list.push(path);
+  }
+
+  try {
+    if (Folder.userData) push(Folder.userData.fsName + "/ae-mcp");
+  } catch (e) {}
+
+  try {
+    push(new Folder("~/Library/Application Support/ae-mcp").fsName);
+  } catch (e2) {}
+
+  return list;
+}
+
+/**
+ * Read a text file, or null if it is missing or unreadable.
+ */
+function aemcpReadText(file) {
+  if (!file || !file.exists) return null;
+  try {
+    file.open("r");
+    var content = file.read();
+    file.close();
+    return content;
+  } catch (e) {
+    return null;
+  }
+}
+
+function aemcpTrim(str) {
+  return String(str).replace(/^[\s\u0000]+|[\s\u0000]+$/g, "");
+}
+
+/**
+ * Resolve the commands folder. MUST mirror resolveCommandsDir() in
+ * src/ae-integration/commandsDir.ts:
+ *   1. AE_MCP_COMMANDS_DIR environment variable
+ *   2. active-commands-dir.txt published by the running server
+ *   3. "commandsDir" in <appSupport>/ae-mcp/config.json
+ *   4. <appSupport>/ae-mcp/commands
+ *
+ * Step 2 exists because After Effects launched from Finder does not inherit
+ * the shell environment, so the panel cannot see the server's env var.
+ */
+function aemcpResolveCommandsDir() {
+  var candidates = aemcpAppSupportCandidates();
+  var i;
+
+  var fromEnv = null;
+  try {
+    fromEnv = $.getenv("AE_MCP_COMMANDS_DIR");
+  } catch (e) {
+    fromEnv = null;
+  }
+  if (fromEnv) {
+    fromEnv = aemcpTrim(fromEnv);
+    if (fromEnv.length > 0) {
+      return { path: fromEnv, source: "env", candidates: candidates };
+    }
+  }
+
+  for (i = 0; i < candidates.length; i++) {
+    var pointer = aemcpReadText(new File(candidates[i] + "/active-commands-dir.txt"));
+    if (pointer) {
+      pointer = aemcpTrim(pointer);
+      if (pointer.length > 0) {
+        return { path: pointer, source: "server", candidates: candidates };
+      }
+    }
+  }
+
+  for (i = 0; i < candidates.length; i++) {
+    var configText = aemcpReadText(new File(candidates[i] + "/config.json"));
+    if (configText) {
+      try {
+        var config = JSON.parse(configText);
+        if (config && config.commandsDir) {
+          var configured = aemcpTrim(config.commandsDir);
+          if (configured.length > 0) {
+            return { path: configured, source: "config", candidates: candidates };
+          }
+        }
+      } catch (e2) {
+        // Malformed config: fall through.
+      }
+    }
+  }
+
+  return {
+    path: (candidates.length > 0 ? candidates[0] : Folder.myDocuments.fsName + "/ae-mcp")
+          + "/commands",
+    source: "default",
+    candidates: candidates
+  };
+}
+
+/**
  * Initialize the MCP bridge
  */
 function initMCP() {
-  // Set up commands folder in Documents
-  var documentsPath = Folder.myDocuments.fsName;
-  AEMCP.commandsFolder = new Folder(documentsPath + "/ae-mcp-commands");
+  var resolved = aemcpResolveCommandsDir();
+  AEMCP.folderSource = resolved.source;
 
-  if (!AEMCP.commandsFolder.exists) {
-    AEMCP.commandsFolder.create();
+  var primary = new Folder(resolved.path);
+  if (!primary.exists) {
+    primary.create();
+  }
+  AEMCP.commandsFolder = primary;
+  AEMCP.folders = [primary];
+
+  function watch(folder) {
+    if (!folder || !folder.exists) return;
+    for (var i = 0; i < AEMCP.folders.length; i++) {
+      if (AEMCP.folders[i].fsName === folder.fsName) return;
+    }
+    AEMCP.folders.push(folder);
   }
 
+  // Every other app-support candidate, in case Folder.userData does not match
+  // what the server computed.
+  for (var c = 0; c < resolved.candidates.length; c++) {
+    watch(new Folder(resolved.candidates[c] + "/commands"));
+  }
+
+  // Backwards compatibility: keep watching the old Documents folder while it
+  // exists, so a server that has not been updated yet still gets answered.
+  watch(new Folder(Folder.myDocuments.fsName + "/ae-mcp-commands"));
+
   AEMCP.isRunning = true;
-  return JSON.stringify({ success: true, folder: AEMCP.commandsFolder.fsName });
+
+  var names = [];
+  for (var n = 0; n < AEMCP.folders.length; n++) {
+    names.push(AEMCP.folders[n].fsName);
+  }
+
+  return JSON.stringify({
+    success: true,
+    folder: primary.fsName,
+    folders: names,
+    source: resolved.source
+  });
 }
 
 /**
@@ -35,28 +181,35 @@ function initMCP() {
  * Called periodically by the CEP panel
  */
 function processCommands() {
-  if (!AEMCP.commandsFolder || !AEMCP.commandsFolder.exists) {
+  if (!AEMCP.folders || AEMCP.folders.length === 0) {
     return JSON.stringify({ processed: 0 });
   }
 
-  var files = AEMCP.commandsFolder.getFiles("*.json");
   var processed = 0;
 
-  for (var i = 0; i < files.length; i++) {
-    var file = files[i];
+  for (var f = 0; f < AEMCP.folders.length; f++) {
+    var folder = AEMCP.folders[f];
+    if (!folder || !folder.exists) continue;
 
-    // Skip response files and processed files
-    if (file.name.indexOf(".response") !== -1) continue;
-    if (file.name.indexOf(".processed") !== -1) continue;
+    var files = folder.getFiles("*.json");
 
-    // Skip already processed commands
-    if (AEMCP.processedCommands[file.name]) continue;
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
 
-    try {
-      processed += processCommandFile(file);
-    } catch (e) {
-      // Log error but continue processing
-      $.writeln("Error processing " + file.name + ": " + e.toString());
+      // Skip response files and processed files
+      if (file.name.indexOf(".response") !== -1) continue;
+      if (file.name.indexOf(".processed") !== -1) continue;
+
+      // Skip already processed commands. Keyed by full path: two folders can
+      // legitimately hold files with the same name.
+      if (AEMCP.processedCommands[file.fsName]) continue;
+
+      try {
+        processed += processCommandFile(file);
+      } catch (e) {
+        // Log error but continue processing
+        $.writeln("Error processing " + file.fsName + ": " + e.toString());
+      }
     }
   }
 
@@ -157,7 +310,7 @@ function writeErrorResponse(commandFile, error) {
  * Mark a command file as processed
  */
 function markAsProcessed(file) {
-  AEMCP.processedCommands[file.name] = true;
+  AEMCP.processedCommands[file.fsName] = true;
 
   // Rename to .processed to archive
   var processedPath = file.fsName + ".processed";
@@ -190,34 +343,30 @@ function extractCommandId(filename) {
  * Clean up old processed files
  */
 function cleanupProcessedFiles(maxAge) {
-  if (!AEMCP.commandsFolder || !AEMCP.commandsFolder.exists) {
+  if (!AEMCP.folders || AEMCP.folders.length === 0) {
     return JSON.stringify({ cleaned: 0 });
   }
 
   maxAge = maxAge || 3600000; // Default 1 hour
   var now = new Date().getTime();
   var cleaned = 0;
+  var patterns = ["*.processed", "*.response"];
 
-  var files = AEMCP.commandsFolder.getFiles("*.processed");
-  for (var i = 0; i < files.length; i++) {
-    var file = files[i];
-    var modified = file.modified.getTime();
+  for (var f = 0; f < AEMCP.folders.length; f++) {
+    var folder = AEMCP.folders[f];
+    if (!folder || !folder.exists) continue;
 
-    if (now - modified > maxAge) {
-      file.remove();
-      cleaned++;
-    }
-  }
+    for (var p = 0; p < patterns.length; p++) {
+      var files = folder.getFiles(patterns[p]);
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        var modified = file.modified.getTime();
 
-  // Also clean up response files
-  files = AEMCP.commandsFolder.getFiles("*.response");
-  for (var i = 0; i < files.length; i++) {
-    var file = files[i];
-    var modified = file.modified.getTime();
-
-    if (now - modified > maxAge) {
-      file.remove();
-      cleaned++;
+        if (now - modified > maxAge) {
+          file.remove();
+          cleaned++;
+        }
+      }
     }
   }
 
@@ -228,10 +377,22 @@ function cleanupProcessedFiles(maxAge) {
  * Get MCP status
  */
 function getMCPStatus() {
+  var names = [];
+  for (var i = 0; i < AEMCP.folders.length; i++) {
+    names.push(AEMCP.folders[i].fsName);
+  }
+
+  var count = 0;
+  for (var k in AEMCP.processedCommands) {
+    if (AEMCP.processedCommands.hasOwnProperty(k)) count++;
+  }
+
   return JSON.stringify({
     isRunning: AEMCP.isRunning,
     folder: AEMCP.commandsFolder ? AEMCP.commandsFolder.fsName : null,
-    processedCount: Object.keys(AEMCP.processedCommands).length,
+    folders: names,
+    folderSource: AEMCP.folderSource,
+    processedCount: count,
     aeVersion: app.version,
     project: app.project.file ? app.project.file.name : "Untitled"
   });

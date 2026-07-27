@@ -7,8 +7,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { Logger, MCPResponse, PendingCommand, CommandFile, ResponseFile } from '../types/mcpTypes.js';
+import {
+  resolveCommandsDir,
+  publishActiveCommandsDir,
+  legacyCommandsDirExists,
+  LEGACY_COMMANDS_DIR,
+  CommandsDirSource
+} from './commandsDir.js';
 
 // Default logger if none provided
 const defaultLogger: Logger = {
@@ -20,6 +26,7 @@ const defaultLogger: Logger = {
 
 export class FileCommunicator {
   private commandsFolder: string;
+  private commandsFolderSource: CommandsDirSource;
   private clientPrefix: string;
   private pendingCommands: Map<string, PendingCommand> = new Map();
   private pollInterval: NodeJS.Timeout | null = null;
@@ -32,6 +39,7 @@ export class FileCommunicator {
     logger?: Logger;
     commandTimeout?: number;
     pollRate?: number;
+    commandsDir?: string;
   } = {}) {
     this.logger = options.logger || defaultLogger;
     this.commandTimeout = options.commandTimeout || 60000; // 60 seconds
@@ -40,13 +48,17 @@ export class FileCommunicator {
     // Generate unique client prefix
     this.clientPrefix = `client_${process.pid}_${Date.now()}`;
 
-    // Set up commands folder in user's Documents
-    const documentsPath = path.join(os.homedir(), 'Documents');
-    this.commandsFolder = path.join(documentsPath, 'ae-mcp-commands');
+    // Resolve the command-exchange folder. See commandsDir.ts: env var, then
+    // config file, then a per-user app-support folder that no cloud service
+    // syncs. The CEP host script implements the same order.
+    const resolved = resolveCommandsDir(options.commandsDir);
+    this.commandsFolder = resolved.dir;
+    this.commandsFolderSource = resolved.source;
 
     this.logger.info('FileCommunicator initialized', {
       clientPrefix: this.clientPrefix,
-      commandsFolder: this.commandsFolder
+      commandsFolder: this.commandsFolder,
+      commandsFolderSource: this.commandsFolderSource
     });
   }
 
@@ -70,10 +82,31 @@ export class FileCommunicator {
       throw new Error(`Failed to create commands folder: ${this.commandsFolder}`);
     }
 
+    // Publish the resolved path so the CEP panel can follow it. After Effects
+    // launched from Finder does not inherit the shell environment, so the panel
+    // cannot read AE_MCP_COMMANDS_DIR by itself.
+    if (!publishActiveCommandsDir(this.commandsFolder)) {
+      this.logger.warn('Could not publish active commands dir pointer', {
+        commandsFolder: this.commandsFolder
+      });
+    }
+
+    if (legacyCommandsDirExists() && this.commandsFolder !== LEGACY_COMMANDS_DIR) {
+      this.logger.info(
+        'Legacy commands folder still present; the CEP panel also watches it ' +
+        'so an outdated server keeps working. Safe to delete once every ' +
+        'machine runs v1.2.0-ff or newer.',
+        { legacy: LEGACY_COMMANDS_DIR }
+      );
+    }
+
     // Start polling for responses
     this.startPolling();
     this.isConnected = true;
-    this.logger.info('FileCommunicator connected');
+    this.logger.info('FileCommunicator connected', {
+      commandsFolder: this.commandsFolder,
+      source: this.commandsFolderSource
+    });
   }
 
   /**
@@ -331,6 +364,13 @@ export class FileCommunicator {
     while (Date.now() < end) {
       // Busy wait
     }
+  }
+
+  /**
+   * Get the resolved commands folder and how it was resolved
+   */
+  getCommandsFolder(): { dir: string; source: CommandsDirSource } {
+    return { dir: this.commandsFolder, source: this.commandsFolderSource };
   }
 
   /**

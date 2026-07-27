@@ -91,6 +91,20 @@ exactly there.
 
 ## This user's environment (macbook-aleix-local)
 
+- **The CEP symlink is a silent failure mode.** `install-cep.sh` symlinks
+  `~/Library/Application Support/Adobe/CEP/extensions/com.aemcp.panel` to
+  `<repo>/cep-extension`. Move the repo and the panel keeps working until
+  the next AE restart, then disappears from Window > Extensions with no
+  error. Confirmed on 2026-07-27: the symlink still pointed at a deleted
+  `~/Documents/ae-mcp` copy, so every edit to `cep-extension/` in the repo
+  was reaching nothing. Verify with
+  `ls -la ~/Library/Application\ Support/Adobe/CEP/extensions/` before
+  believing any panel-side change took effect.
+- **Commands folder** (v1.2.0-ff): `~/Library/Application Support/ae-mcp/commands`,
+  overridable with `AE_MCP_COMMANDS_DIR` or `config.json`. The panel STATUS
+  line shows the resolved folder; `(server)` means it followed the pointer
+  the server publishes. It still watches the old
+  `~/Documents/ae-mcp-commands` for backwards compatibility.
 - Single source of truth: **`~/ae-mcp`** (git; origin = public fork at
   github.com/aleixsubira/ae-mcp, upstream = original author). Claude
   desktop runs `~/ae-mcp/dist/index.js` directly; the old second copy in

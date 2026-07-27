@@ -96,6 +96,37 @@ repo; also installable in Claude so it loads on its own). Summary:
 
 ---
 
+## 3b. The command folder (v1.2.0-ff)
+
+The server and the CEP panel talk to each other through a folder of JSON
+files. Until v1.1.0-ff that folder was hardcoded to
+`~/Documents/ae-mcp-commands`, which is the worst possible place on a Mac:
+with iCloud "Desktop & Documents" enabled, every command takes a cloud
+round-trip before the panel sees it, and `.icloud` placeholders can make
+commands vanish.
+
+Both sides now resolve the folder the same way:
+
+1. `AE_MCP_COMMANDS_DIR` environment variable
+2. `commandsDir` in `~/Library/Application Support/ae-mcp/config.json`
+3. `~/Library/Application Support/ae-mcp/commands` (default, never synced)
+
+After Effects launched from Finder does not inherit the shell environment,
+so the panel cannot read the env var. The server therefore publishes the
+resolved path to `~/Library/Application Support/ae-mcp/active-commands-dir.txt`
+and the panel reads it. The panel also keeps watching the old Documents
+folder while it exists, so server and extension can be updated in either
+order without breaking the bridge.
+
+The panel STATUS line shows the resolved folder and how it was resolved:
+`(server)` means it followed the pointer, `(default)` means the server had
+not published one yet. Both work as long as the paths match.
+
+Delete `~/Documents/ae-mcp-commands` only once every machine runs
+v1.2.0-ff or newer.
+
+---
+
 ## 4. Known issues (pending, low priority)
 
 - `save_project` without `path` fails if the project was never saved: pass
@@ -111,13 +142,35 @@ repo; also installable in Claude so it loads on its own). Summary:
 
 - Touch code → `npx tsc` → Cmd+Q Claude and reopen (the node process is a
   child of the app; toggling the connector may not kill it).
-- The CEP extension almost never needs changes: commands travel as JSON
-  files through `~/Documents/ae-mcp-commands/` and the panel executes them.
+- Commands travel as JSON files through the folder described in section 3b
+  and the panel executes them.
+- **Moving or renaming the repo breaks the CEP extension silently.**
+  `install-cep.sh` creates a *symlink* from
+  `~/Library/Application Support/Adobe/CEP/extensions/com.aemcp.panel` to
+  `<repo>/cep-extension`. If the repo moves, the symlink dangles and the
+  panel keeps working until the next After Effects restart, then vanishes
+  from Window > Extensions with no error anywhere. Re-run
+  `install-cep.sh` after any move. Check where it points with:
+  `ls -la ~/Library/Application\ Support/Adobe/CEP/extensions/`
+- Unsigned extensions need `PlayerDebugMode 1` per CEP runtime version.
+  `install-cep.sh` now sets CSXS 9 through 15; an AE upgrade to a newer
+  runtime is another way for the panel to disappear from the menu.
+- Touching `cep-extension/` requires closing and reopening the panel
+  (or restarting AE). Touching `src/` requires `npx tsc` and restarting
+  the Claude app.
 - Upstream: keeping `origin`→our fork and `upstream`→the original repo
   allows pulling updates (`git fetch upstream && git merge upstream/main`)
   and considering a PR with our fixes: they are generic, not internal.
 
 ## 6. Internal changelog
+
+- **2026-07-27** (`v1.2.0-ff`): command folder is configurable and defaults
+  to `~/Library/Application Support/ae-mcp/commands` instead of
+  `~/Documents`; panel reports the resolved folder and watches the legacy
+  one for backwards compatibility; `install-cep.sh` covers CSXS 9-15 and
+  flushes the preference cache. Found while diagnosing a panel that had
+  disappeared from Window > Extensions: the CEP symlink still pointed at a
+  deleted second copy of the repo.
 
 - **2026-07-26** (`v1.1.0-ff`): `set_keyframe` and `get_expression` fixes;
   new `render_frame` and `get_comp_report`; `ae-visual-workflow` skill.

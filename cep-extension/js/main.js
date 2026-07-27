@@ -31,7 +31,7 @@ function init() {
     try {
       const data = JSON.parse(result);
       if (data.success) {
-        log('MCP initialized. Folder: ' + data.folder);
+        logResolvedFolders(data);
         startPolling();
       } else {
         log('Failed to initialize MCP');
@@ -62,6 +62,7 @@ function startMCP() {
       const data = JSON.parse(result);
       if (data.success) {
         log('MCP started');
+        logResolvedFolders(data);
         startPolling();
       }
     } catch (e) {
@@ -147,6 +148,20 @@ function cleanup() {
 }
 
 /**
+ * Report which folder(s) the bridge is watching and how that was decided.
+ * A silent mismatch between server and panel is the failure mode worth
+ * surfacing here: it looks exactly like "After Effects is not responding".
+ */
+function logResolvedFolders(data) {
+  log('MCP initialized (' + (data.source || 'default') + '). Folder: ' + data.folder);
+
+  const folders = data.folders || [];
+  for (let i = 1; i < folders.length; i++) {
+    log('Also watching legacy folder: ' + folders[i]);
+  }
+}
+
+/**
  * Update status display
  */
 function updateStatus() {
@@ -157,7 +172,12 @@ function updateStatus() {
       statusText += 'Status: ' + (isRunning ? 'Running' : 'Stopped') + '\n';
       statusText += 'AE Version: ' + data.aeVersion + '\n';
       statusText += 'Project: ' + (data.project || 'None') + '\n';
-      statusText += 'Commands Processed: ' + data.processedCount;
+      statusText += 'Commands Processed: ' + data.processedCount + '\n';
+      statusText += 'Folder: ' + (data.folder || 'unknown') +
+                    ' (' + (data.folderSource || '?') + ')';
+      if (data.folders && data.folders.length > 1) {
+        statusText += '\n+ legacy: ' + data.folders.slice(1).join(', ');
+      }
 
       statusElement.textContent = statusText;
     } catch (e) {

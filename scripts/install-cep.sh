@@ -19,11 +19,18 @@ if [ ! -d "$EXTENSION_DIR" ]; then
   exit 1
 fi
 
-# Enable unsigned extensions (required for development)
+# Enable unsigned extensions (required for development).
+# One key per CEP runtime version: After Effects 2025+ ships CSXS 13/14/15, and
+# an extension that loaded fine yesterday disappears from Window > Extensions
+# the moment AE moves to a runtime whose PlayerDebugMode was never set.
 echo "Enabling unsigned extensions for debugging..."
-defaults write com.adobe.CSXS.12 PlayerDebugMode 1
-defaults write com.adobe.CSXS.11 PlayerDebugMode 1
-defaults write com.adobe.CSXS.10 PlayerDebugMode 1
+for CSXS_VERSION in 9 10 11 12 13 14 15; do
+  defaults write "com.adobe.CSXS.$CSXS_VERSION" PlayerDebugMode 1
+done
+
+# macOS caches preferences; without this the new values may not be visible to
+# After Effects until the next login.
+killall cfprefsd 2>/dev/null || true
 
 # Create CEP extensions directory if it doesn't exist
 mkdir -p "$(dirname "$INSTALL_DIR")"
