@@ -745,11 +745,60 @@ const TOOLS = [
         layerName: { type: 'string' },
         controlType: { type: 'string', enum: ['slider', 'color', 'point', 'checkbox', 'dropdown', 'angle', 'layer'] },
         controlName: { type: 'string' },
-        defaultValue: {}
+        defaultValue: {},
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Dropdown only: the menu entries. No empty strings, no duplicates, no "|". ' +
+            'The control is populated before it is named, because populating a dropdown ' +
+            'regenerates the pseudo-effect and drops its name.'
+        }
       },
       required: ['controlType', 'controlName']
     },
     generator: generators.generateAddExpressionControl
+  },
+  {
+    name: 'set_dropdown_items',
+    description: 'Replace the menu entries of an existing Dropdown Menu Control. ' +
+      'The effect name is restored afterwards, so expressions of the form ' +
+      'effect("My Dropdown")(1) keep resolving.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        effectName: { type: 'string', description: 'Name of the dropdown effect' },
+        effectIndex: { type: 'number', description: 'Alternative to effectName' },
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Menu entries. No empty strings, no duplicates, no "|".'
+        }
+      },
+      required: ['items']
+    },
+    generator: generators.generateSetDropdownItems
+  },
+  {
+    name: 'get_dropdown_items',
+    description: 'Read the menu entries and current selection of a Dropdown Menu Control. ' +
+      'Requires After Effects 26.0 or newer; older versions return readable:false.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        effectName: { type: 'string' },
+        effectIndex: { type: 'number' }
+      },
+      required: []
+    },
+    generator: generators.generateGetDropdownItems
   },
   {
     name: 'apply_expression_template',

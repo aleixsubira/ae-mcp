@@ -91,6 +91,13 @@ exactly there.
 
 ## This user's environment (macbook-aleix-local)
 
+- **Dropdown Menu Controls are pseudo-effects.** `setPropertyParameters`
+  regenerates the effect (new matchName) and DROPS its custom name, which
+  silently breaks every `effect("My Dropdown")(1)` expression without
+  raising an expression error. Use `add_expression_control` with `items`
+  (populates before naming) or `set_dropdown_items` (restores the name).
+  Never call setPropertyParameters raw. Empty names, duplicates and "|"
+  are rejected by AE; accents survive fine.
 - **The CEP symlink is a silent failure mode.** `install-cep.sh` symlinks
   `~/Library/Application Support/Adobe/CEP/extensions/com.aemcp.panel` to
   `<repo>/cep-extension`. Move the repo and the panel keeps working until

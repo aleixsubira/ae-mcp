@@ -127,6 +127,39 @@ v1.2.0-ff or newer.
 
 ---
 
+## 3c. Dropdown Menu Controls (v1.3.0-ff)
+
+Populating a dropdown from a script used to be impossible through this
+server, so every menu had to be filled by hand with Edit... That is now
+`items` on `add_expression_control`, plus `set_dropdown_items` and
+`get_dropdown_items`.
+
+The trap, measured on AE 26.0: a Dropdown Menu Control is a **pseudo-effect**.
+`setPropertyParameters` does not edit it, it **regenerates** it with a new
+matchName, and the custom effect name is lost (the effect comes back as
+"Dropdown Menu Control"). Any expression of the form
+`effect("Producto Escena 1")(1)` is then left pointing at a name that no
+longer exists, and After Effects raises no expression error for it.
+
+So the tools do two things you must keep if you touch this code:
+
+- `add_expression_control` populates the dropdown **before** naming the effect.
+- `set_dropdown_items` captures the name, repopulates, and restores it.
+
+Verified end to end: a slave expression referencing the effect by name keeps
+resolving after a repopulation, and still evaluates (dropdown set to item 2,
+the driven Opacity read back as 20).
+
+What After Effects rejects, validated up front so you get a clear message:
+empty item names, duplicates, and the "|" character. Accented characters do
+survive (`Nexa Diésel` round-trips byte for byte), despite the Adobe docs
+warning about non-ASCII.
+
+`get_dropdown_items` needs AE 26.0 or newer; older versions cannot read the
+item list back and return `readable:false`.
+
+---
+
 ## 4. Known issues (pending, low priority)
 
 - `save_project` without `path` fails if the project was never saved: pass
@@ -163,6 +196,13 @@ v1.2.0-ff or newer.
   and considering a PR with our fixes: they are generic, not internal.
 
 ## 6. Internal changelog
+
+- **2026-07-27** (`v1.3.0-ff`): dropdowns can be populated from script
+  (`items` on `add_expression_control`, `set_dropdown_items`,
+  `get_dropdown_items`), with the effect name preserved across the
+  pseudo-effect regeneration. Also fixed `wrapInUndoGroup`, which was
+  swallowing the result object of every tool it wrapped: those tools
+  returned `success` with no data.
 
 - **2026-07-27** (`v1.2.0-ff`): command folder is configurable and defaults
   to `~/Library/Application Support/ae-mcp/commands` instead of

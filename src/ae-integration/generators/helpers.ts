@@ -220,6 +220,12 @@ export function wrapInUndoGroup(script: string, name: string): string {
   wrapped += '  throw e;\n';
   wrapped += '}\n';
   wrapped += 'app.endUndoGroup();\n';
+  // The value of an eval() is its last statement. Without this, every tool
+  // wrapped in an undo group returned undefined instead of its result object,
+  // because app.endUndoGroup() was the last thing to run. "var result" inside
+  // the try block is hoisted to the eval scope, so it is readable here; the
+  // typeof guard covers generators that build no result object.
+  wrapped += 'typeof result !== "undefined" ? result : null;\n';
   return wrapped;
 }
 

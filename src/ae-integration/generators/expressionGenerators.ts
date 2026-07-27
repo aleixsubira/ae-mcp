@@ -323,6 +323,7 @@ export function generateAddExpressionControl(params: {
   controlType: string;
   controlName: string;
   defaultValue?: number | number[] | boolean | string;
+  items?: string[];
 }): string {
   let script = '';
   script += generateProjectCheck();
@@ -347,6 +348,20 @@ export function generateAddExpressionControl(params: {
   }
 
   script += 'var effect = layer.property("Effects").addProperty("' + effectName + '");\n';
+  script += 'var effectIndex = effect.propertyIndex;\n';
+
+  // A Dropdown Menu Control is a PSEUDO-EFFECT: setPropertyParameters does not
+  // edit it, it regenerates it with a new matchName, and the custom effect name
+  // is lost in the process (measured on AE 26.0: the effect comes back as
+  // "Dropdown Menu Control"). So populate FIRST, then name. Any expression that
+  // references the effect by name would otherwise be left pointing at nothing,
+  // and AE does not raise an expression error for it.
+  if (params.controlType === 'dropdown' && params.items && params.items.length > 0) {
+    validateDropdownItems(params.items);
+    script += 'effect.property(1).setPropertyParameters(' + arrayOfStringsToES3(params.items) + ');\n';
+    script += 'effect = layer.property("Effects").property(effectIndex);\n';
+  }
+
   script += 'effect.name = "' + escapeString(params.controlName) + '";\n';
 
   // Set default value based on control type
@@ -512,4 +527,163 @@ export function getExpressionTemplates(): Record<string, { description: string; 
     };
   }
   return templates;
+}
+
+
+/**
+ * Serialize a list of strings as an ES3 array literal.
+ */
+function arrayOfStringsToES3(items: string[]): string {
+  const parts: string[] = [];
+  for (const item of items) {
+    parts.push('"' + escapeString(item) + '"');
+  }
+  return '[' + parts.join(', ') + ']';
+}
+
+/**
+ * Reject item lists After Effects will refuse, so the caller gets a useful
+ * message instead of a raw ExtendScript exception.
+ * Measured against AE 26.0: empty names, duplicates and "|" all throw.
+ */
+export function validateDropdownItems(items: string[]): void {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('items must be a non-empty array of strings');
+  }
+
+  const seen: Record<string, boolean> = {};
+  for (const item of items) {
+    if (typeof item !== 'string') {
+      throw new Error('Dropdown items must be strings, got: ' + typeof item);
+    }
+    if (item.trim().length === 0) {
+      throw new Error('Dropdown items cannot be empty. After Effects rejects empty item names.');
+    }
+    if (item.indexOf('|') !== -1) {
+      throw new Error('Dropdown items cannot contain "|": After Effects uses it as a separator. Offending item: ' + item);
+    }
+    if (seen[item]) {
+      throw new Error('Duplicate dropdown item: "' + item + '". After Effects rejects duplicates.');
+    }
+    seen[item] = true;
+  }
+}
+
+/**
+ * Replace the items of an EXISTING Dropdown Menu Control.
+ *
+ * The effect name is captured and restored around the call: setPropertyParameters
+ * regenerates the pseudo-effect and drops the custom name, which silently breaks
+ * every expression of the form effect("My Dropdown")(1). Restoring the name is
+ * what makes retrofitting already-built rigs safe.
+ */
+export function generateSetDropdownItems(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  effectName?: string;
+  effectIndex?: number;
+  items: string[];
+}): string {
+  validateDropdownItems(params.items);
+
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+
+  script += 'var effects = layer.property("Effects");\n';
+  script += 'if (!effects) { throw new Error("Layer has no effects"); }\n';
+
+  if (params.effectName) {
+    script += 'var target = effects.property("' + escapeString(params.effectName) + '");\n';
+    script += 'if (!target) { throw new Error("Effect not found: ' + escapeString(params.effectName) + '"); }\n';
+    script += 'var targetIndex = target.propertyIndex;\n';
+  } else if (params.effectIndex !== undefined) {
+    script += 'var targetIndex = ' + params.effectIndex + ';\n';
+    script += 'var target = effects.property(targetIndex);\n';
+    script += 'if (!target) { throw new Error("No effect at index ' + params.effectIndex + '"); }\n';
+  } else {
+    script += 'throw new Error("Provide effectName or effectIndex");\n';
+    return script;
+  }
+
+  script += 'var previousName = target.name;\n';
+  script += 'var menu = target.property(1);\n';
+  script += 'if (!menu.isDropdownEffect) { throw new Error("Not a Dropdown Menu Control: " + previousName); }\n';
+
+  script += 'menu.setPropertyParameters(' + arrayOfStringsToES3(params.items) + ');\n';
+
+  // The pseudo-effect was regenerated: re-fetch by index and put the name back.
+  script += 'var restored = effects.property(targetIndex);\n';
+  script += 'restored.name = previousName;\n';
+
+  script += 'var readback = restored.property(1).propertyParameters;\n';
+  script += 'var readbackList = [];\n';
+  script += 'if (readback) { for (var ri = 0; ri < readback.length; ri++) { readbackList.push(readback[ri]); } }\n';
+
+  script += generateResultObject({
+    success: 'true',
+    effectName: 'restored.name',
+    nameRestored: '(restored.name === previousName)',
+    effectIndex: 'targetIndex',
+    matchName: 'restored.matchName',
+    items: 'readbackList',
+    itemCount: 'readbackList.length',
+    selectedIndex: 'restored.property(1).value'
+  });
+
+  return wrapInUndoGroup(script, 'Set Dropdown Items');
+}
+
+/**
+ * Read the items of a Dropdown Menu Control.
+ * Requires the propertyParameters accessor (After Effects 26.0+).
+ */
+export function generateGetDropdownItems(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  effectName?: string;
+  effectIndex?: number;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+
+  script += 'var effects = layer.property("Effects");\n';
+  script += 'if (!effects) { throw new Error("Layer has no effects"); }\n';
+
+  if (params.effectName) {
+    script += 'var target = effects.property("' + escapeString(params.effectName) + '");\n';
+    script += 'if (!target) { throw new Error("Effect not found: ' + escapeString(params.effectName) + '"); }\n';
+  } else if (params.effectIndex !== undefined) {
+    script += 'var target = effects.property(' + params.effectIndex + ');\n';
+    script += 'if (!target) { throw new Error("No effect at index ' + params.effectIndex + '"); }\n';
+  } else {
+    script += 'throw new Error("Provide effectName or effectIndex");\n';
+    return script;
+  }
+
+  script += 'var menu = target.property(1);\n';
+  script += 'if (!menu.isDropdownEffect) { throw new Error("Not a Dropdown Menu Control: " + target.name); }\n';
+  script += 'var raw = menu.propertyParameters;\n';
+  script += 'var list = [];\n';
+  script += 'if (raw) { for (var i = 0; i < raw.length; i++) { list.push(raw[i]); } }\n';
+
+  script += generateResultObject({
+    success: 'true',
+    effectName: 'target.name',
+    effectIndex: 'target.propertyIndex',
+    items: 'list',
+    itemCount: 'list.length',
+    selectedIndex: 'menu.value',
+    selectedText: '(menu.valueText !== undefined ? menu.valueText : null)',
+    readable: '(raw ? true : false)'
+  });
+
+  return script;
 }
