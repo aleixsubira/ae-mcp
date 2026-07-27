@@ -59,7 +59,7 @@ const TOOLS = [
   },
   {
     name: 'save_project',
-    description: 'Save the current project',
+    description: 'Save the current project IN PLACE, overwriting it. For routine checkpoints prefer increment_and_save, which cannot destroy the previous state.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -67,6 +67,14 @@ const TOOLS = [
       }
     },
     generator: generators.generateSaveProject
+  },
+  {
+    name: 'increment_and_save',
+    description: 'Save the project under the next free numbered filename, leaving the ' +
+      'current file untouched (…Test 5.aep -> …Test 6.aep). Prefer this over save_project ' +
+      'for routine checkpoints: it can never overwrite the last known-good state.',
+    inputSchema: { type: 'object', properties: {} },
+    generator: generators.generateIncrementAndSave
   },
   {
     name: 'close_project',

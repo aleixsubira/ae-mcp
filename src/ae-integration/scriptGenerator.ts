@@ -9,6 +9,7 @@ export {
   generateCreateProject,
   generateOpenProject,
   generateSaveProject,
+  generateIncrementAndSave,
   generateCloseProject,
   generateGetProjectInfo,
   generateImportFootage,

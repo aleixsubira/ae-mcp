@@ -83,6 +83,62 @@ export function generateSaveProject(params: { path?: string }): string {
 }
 
 /**
+ * Generate script to save the project under the NEXT available numbered name,
+ * leaving the current file untouched (Repsol_MotionSystem_Test 5.aep ->
+ * Repsol_MotionSystem_Test 6.aep).
+ *
+ * Prefers After Effects' own "Increment and Save" menu command so the numbering
+ * matches what the user gets from the keyboard. findMenuCommandId is
+ * language-dependent, so there is a self-computed fallback: no user should lose
+ * the ability to save safely because their AE is not in English.
+ */
+export function generateIncrementAndSave(): string {
+  let script = '';
+  script += generateProjectCheck();
+
+  script += 'if (!app.project.file) {\n';
+  script += '  throw new Error("Project has never been saved. Use save_project with an explicit path first.");\n';
+  script += '}\n';
+  script += 'var previousPath = app.project.file.fsName;\n';
+  script += 'var method = "menuCommand";\n';
+
+  script += 'var cmdId = 0;\n';
+  script += 'try { cmdId = app.findMenuCommandId("Increment and Save"); } catch (e) { cmdId = 0; }\n';
+
+  script += 'if (cmdId) {\n';
+  script += '  app.executeCommand(cmdId);\n';
+  script += '} else {\n';
+  script += '  method = "computed";\n';
+  script += '  var folder = app.project.file.parent;\n';
+  script += '  var full = app.project.file.name;\n';
+  script += '  var dot = full.lastIndexOf(".");\n';
+  script += '  var ext = dot > -1 ? full.substring(dot) : ".aep";\n';
+  script += '  var stem = dot > -1 ? full.substring(0, dot) : full;\n';
+  script += '  stem = decodeURI(stem);\n';
+  script += '  var m = stem.match(/^(.*?)(\\d+)$/);\n';
+  script += '  var base, n;\n';
+  script += '  if (m) { base = m[1]; n = parseInt(m[2], 10); } else { base = stem + " "; n = 1; }\n';
+  script += '  var candidate = null;\n';
+  script += '  for (var i = n + 1; i < n + 1000; i++) {\n';
+  script += '    var f = new File(folder.fsName + "/" + base + i + ext);\n';
+  script += '    if (!f.exists) { candidate = f; break; }\n';
+  script += '  }\n';
+  script += '  if (!candidate) { throw new Error("Could not find a free incremented filename"); }\n';
+  script += '  app.project.save(candidate);\n';
+  script += '}\n';
+
+  script += generateResultObject({
+    success: 'true',
+    method: 'method',
+    previousPath: 'previousPath',
+    path: 'app.project.file ? app.project.file.fsName : ""',
+    unchangedFileKept: 'previousPath'
+  });
+
+  return script;
+}
+
+/**
  * Generate script to close current project
  */
 export function generateCloseProject(params: { save?: boolean }): string {
