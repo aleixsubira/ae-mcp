@@ -7,7 +7,7 @@ team installation, our improvements over the original project, and the
 working protocol.
 
 - Upstream repo: https://github.com/ishu86/after-effects-mcp
-- Our internal fork (private): https://github.com/aleixgomez-ff/ae-mcp
+- Our fork (public): https://github.com/aleixsubira/ae-mcp
 
 ---
 
@@ -42,7 +42,7 @@ Requirements: After Effects 2024+, Node 18+, Claude desktop app.
 
 ```bash
 # 1. Clone OUR fork (not upstream)
-git clone https://github.com/aleixgomez-ff/ae-mcp.git ~/ae-mcp
+git clone https://github.com/aleixsubira/ae-mcp.git ~/ae-mcp
 cd ~/ae-mcp
 npm install
 npm run build
