@@ -4,10 +4,12 @@ description: >
   Working protocol for driving Adobe After Effects through the ae-mcp server
   (mcp tools prefixed ae-mcp__, possibly proxied as
   mcp__remote-devices__ae-mcp__*). Use whenever building or editing AE
-  compositions via MCP: it defines the see-measure-correct loop
-  (get_comp_report + render_frame), empirical probe calibration, AE traps
-  (opacity vs parenting, off-center cameras, ExtendScript ES3 quirks), and
-  this user's environment specifics (repo location, restart procedure).
+  compositions via MCP: the see-measure-correct loop (get_comp_report +
+  render_frame), empirical probe calibration, expressions on effect
+  properties, dropdown menu controls, safe checkpointing with
+  increment_and_save, AE traps (opacity vs parenting, off-center cameras,
+  ExtendScript ES3 quirks), and this user's environment specifics (repo
+  location, CEP symlink, restart procedure).
 ---
 
 # After Effects via ae-mcp: visual protocol
@@ -22,13 +24,62 @@ first minute:
   installed, ALL expressions and keyframes, animated values sampled at the
   comp markers. Call it before touching anything and after every batch of
   changes. Do not trust that your write worked: verify it here.
-- `render_frame {compName, time, fileName}`: renders a frame to PNG in
-  `~/Desktop/ae_probe/`. After every visual change, render 1-2 key frames,
-  bring them over with device_stage_files and LOOK at them. A render takes
-  ~100 ms: there is no excuse for iterating blind.
+- `render_frame {compName, time, fileName, outputDir}`: renders a frame to
+  PNG. After every visual change, render 1-2 key frames, bring them over
+  with device_stage_files and LOOK at them. A render takes ~100 ms: there
+  is no excuse for iterating blind.
 
 Standard loop: `get_comp_report` → change → `render_frame` → look →
 correct → repeat. Ten cycles is normal and cheap.
+
+**Verifying structure is not verifying function.** On 2026-07-24 a comp was
+renamed and `list_layers` afterwards showed a perfect layer tree, so it was
+called verified. It was not: all six slaving expressions inside it were
+disabled and the whole grouping had been dead for three days. Layer trees
+survive things expressions do not. Read the expressions, or render.
+
+## Rule number two: checkpoints must not be destructive
+
+- `increment_and_save` (no args) saves to the next free numbered filename
+  (`…Test 5.aep` → `…Test 6.aep`) and leaves the current file untouched.
+  Use it freely, at every milestone, without asking.
+- `save_project` overwrites in place. Only on explicit user request.
+
+A checkpoint that can bury the last known-good state is not a checkpoint.
+
+## Expressions
+
+- **Expressions on EFFECT properties work.** Older notes claiming otherwise
+  are wrong (verified 2026-07-27 by writing, reading back and evaluating).
+  Address them with a path:
+  `set_expression {property: "Effects/<Effect name>/<Property name>"}`.
+  A dropdown control's property is `Menu`; a slider's is `Slider`.
+  This is what makes rig slaving automatable instead of hand-pickwhipped.
+- `get_expression` returns `expressionError`. A non-null value means AE has
+  **disabled** the expression: it will silently return the property's static
+  value, and nothing in the UI shouts about it. Always read it back after a
+  rename.
+- Renaming a comp or layer referenced by name inside an expression is
+  **reversible**: read with `get_expression`, rename, read again, repair
+  with `set_expression`. Better still, read before renaming so you know how
+  many references you are about to break.
+
+## Dropdown Menu Controls
+
+- Populate at creation: `add_expression_control {controlType: "dropdown",
+  items: [...]}`. Repopulate later: `set_dropdown_items`. Read back:
+  `get_dropdown_items` (needs AE 26.0+, otherwise `readable:false`).
+- **A Dropdown Menu Control is a pseudo-effect.** `setPropertyParameters`
+  does not edit it, it **regenerates** it with a new matchName and **drops
+  the custom effect name** (it comes back as "Dropdown Menu Control").
+  Every `effect("My Dropdown")(1)` expression is then left pointing at a
+  name that no longer exists, **and AE raises no expression error**.
+  The MCP tools handle this: `add_expression_control` populates before
+  naming, `set_dropdown_items` restores the name afterwards. Never call
+  `setPropertyParameters` raw.
+- AE rejects empty item names, duplicates, and the `|` character. Accents
+  and `+` survive intact (`Nexa Diésel` round-trips byte for byte), despite
+  the Adobe docs warning about non-ASCII.
 
 ## Empirical probe calibration
 
@@ -77,59 +128,70 @@ exactly there.
 - **`app.fonts` gives false negatives**: the report may say
   `installed:false` for fonts that render fine (Helvetica Neue). Confirm
   with a render before believing the flag.
+- **Cmd+Z reverts MCP changes.** Checkpoint often; verify a name before
+  operating on something by index.
 
-## MCP bugs and their status
+## MCP status
 
-- `set_keyframe` / `set_keyframe_advanced`: FIXED (Jul 2026): accepts
-  arrays `[x,y]`, numbers and JSON strings. If an old server returns
-  "Value is not an array", the workaround is expressions.
-- `get_expression`: FIXED (Jul 2026). Old servers crash with
-  `SyntaxError: Expected: ;`.
-- `save_project` without a path fails if the project was never saved: pass
-  `path` the first time.
-- `modify_layer` with `position {x,y,z}` also works on cameras.
+Fixed (Jul 2026, v1.1.0-ff to v1.3.0-ff):
+
+- `set_keyframe` / `set_keyframe_advanced`: accepts arrays `[x,y]`, numbers
+  and JSON strings. An old server returning "Value is not an array" needs
+  updating.
+- `get_expression`: worked around a bare-object ExtendScript crash. Old
+  servers fail with `SyntaxError: Expected: ;`.
+- `wrapInUndoGroup` used to end the script with `app.endUndoGroup()`, so
+  every tool wrapped in an undo group returned `success` with **no data**.
+  If a mutating tool returns no payload, the server predates v1.3.0-ff.
+
+Still not possible through the MCP: the Essential Graphics Panel, reordering
+layers, setting anchor point directly (use an expression), shape internals,
+nested folders and moving items between folders, choosing the renderer,
+changing a layer's font.
+
+Other quirks: `save_project` without a path fails if the project was never
+saved (pass `path` the first time); `import_folder` fails on paths with
+spaces (use `import_footage` one by one); `get_layer_info` evaluates at the
+current time cursor; the safety classifier can block `delete_composition`.
+`modify_layer` with `position {x,y,z}` also works on cameras.
 
 ## This user's environment (macbook-aleix-local)
 
-- **Dropdown Menu Controls are pseudo-effects.** `setPropertyParameters`
-  regenerates the effect (new matchName) and DROPS its custom name, which
-  silently breaks every `effect("My Dropdown")(1)` expression without
-  raising an expression error. Use `add_expression_control` with `items`
-  (populates before naming) or `set_dropdown_items` (restores the name).
-  Never call setPropertyParameters raw. Empty names, duplicates and "|"
-  are rejected by AE; accents survive fine.
+- Single source of truth: **`~/ae-mcp`** (git; origin = public fork at
+  github.com/aleixsubira/ae-mcp, upstream = original author). Claude
+  desktop runs `~/ae-mcp/dist/index.js` directly. If server behavior ever
+  contradicts the repo, confirm with `ps aux | grep ae-mcp` which path is
+  actually running.
 - **The CEP symlink is a silent failure mode.** `install-cep.sh` symlinks
   `~/Library/Application Support/Adobe/CEP/extensions/com.aemcp.panel` to
   `<repo>/cep-extension`. Move the repo and the panel keeps working until
   the next AE restart, then disappears from Window > Extensions with no
-  error. Confirmed on 2026-07-27: the symlink still pointed at a deleted
+  error anywhere. Confirmed 2026-07-27: it still pointed at a deleted
   `~/Documents/ae-mcp` copy, so every edit to `cep-extension/` in the repo
   was reaching nothing. Verify with
   `ls -la ~/Library/Application\ Support/Adobe/CEP/extensions/` before
-  believing any panel-side change took effect.
+  believing any panel-side change took effect. Unsigned extensions also
+  need `PlayerDebugMode 1` per CEP runtime (CSXS 9-15).
 - **Commands folder** (v1.2.0-ff): `~/Library/Application Support/ae-mcp/commands`,
-  overridable with `AE_MCP_COMMANDS_DIR` or `config.json`. The panel STATUS
-  line shows the resolved folder; `(server)` means it followed the pointer
-  the server publishes. It still watches the old
-  `~/Documents/ae-mcp-commands` for backwards compatibility.
-- Single source of truth: **`~/ae-mcp`** (git; origin = public fork at
-  github.com/aleixsubira/ae-mcp, upstream = original author). Claude
-  desktop runs `~/ae-mcp/dist/index.js` directly; the old second copy in
-  `~/Documents/ae-mcp` was deleted in Jul 2026. If server behavior ever
-  contradicts the repo, confirm with `ps aux | grep ae-mcp` which path is
-  actually running.
-- **After changing the server**: rebuild (`npx tsc`) and fully quit the
-  Claude app (Cmd+Q): the node process is its child and toggling the
-  connector may not kill it. The AE CEP extension needs no changes for
-  server-side edits.
-- **The device_bash FUSE mount is fragile** for heavy operations
-  ("Resource deadlock avoided" when exec-ing binaries, git cannot delete
-  its lock files): compile in the cloud container and write the built .js
-  with device_commit_files, or run
-  `node node_modules/typescript/lib/tsc.js` instead of the binary. Git
-  commits are best done by the user in a native terminal.
-- Render PNGs land in `~/Desktop/ae_probe/` (Desktop is usually granted);
-  fetch them with `device_stage_files`.
+  overridable with `AE_MCP_COMMANDS_DIR` or `<appSupport>/ae-mcp/config.json`.
+  The panel STATUS line shows the resolved folder; `(server)` means it
+  followed the pointer the server publishes, `(default)` means it resolved
+  on its own. It also watches the legacy `~/Documents/ae-mcp-commands`.
+- **After changing the server**: rebuild, then fully quit the Claude app
+  (Cmd+Q) and reopen: the node process is its child and toggling the
+  connector may not kill it. After changing `cep-extension/`, close and
+  reopen the AE panel instead (or restart AE). Quitting Claude does not
+  disturb an open After Effects session or its unsaved changes.
+- **The device_bash FUSE mount can create files but not delete them.**
+  Consequences: never run git write operations (`add`, `commit`, `checkout`)
+  through it, because git leaves `.lock` files it cannot remove and the repo
+  jams (`index.lock`, `HEAD.lock`, `packed-refs.lock`). Edit files and
+  compile through the mount, then hand the user a ready-to-paste commit
+  command. Compile with `node node_modules/typescript/lib/tsc.js`, not the
+  `tsc` binary ("Resource deadlock avoided").
+- **Render PNGs**: `~/Desktop/ae_probe/` is the default but Desktop is often
+  NOT granted to the session. Pass `outputDir: "~/ae-mcp/_probe"` instead
+  (granted, and gitignored), then fetch with `device_stage_files`.
 
 ## Reference values: vertical 1080×1920 crawl (calibrated)
 
