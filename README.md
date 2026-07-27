@@ -26,6 +26,12 @@ updates. Last synced base: `v0.1.0` (`5b692a4`).
 
 ---
 
+*Maintained solo by [@aleixsubira](https://github.com/aleixsubira) — Creative
+Designer (Motion & Product) at [Fail Fast Studio](https://failfast.design).
+Issues and PRs welcome; response time depends on client deadlines.*
+
+---
+
 <p align="center">
   <img src="https://img.shields.io/badge/After%20Effects-2024+-9999FF?style=for-the-badge&logo=adobe-after-effects&logoColor=white" alt="After Effects 2024+"/>
   <img src="https://img.shields.io/badge/MCP-Protocol-00D4AA?style=for-the-badge" alt="MCP Protocol"/>
