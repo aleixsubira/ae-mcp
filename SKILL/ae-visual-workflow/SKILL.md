@@ -10,19 +10,19 @@ description: >
   this user's environment specifics (repo location, restart procedure).
 ---
 
-# After Effects via ae-mcp — visual protocol
+# After Effects via ae-mcp: visual protocol
 
 ## Rule number one: never build blind
 
 The ae-mcp server has two verification tools. Use them ALWAYS, from the
 first minute:
 
-- `get_comp_report {compName}` — real state of a comp: layers with
+- `get_comp_report {compName}`: real state of a comp: layers with
   geometry (`sourceRectAtTime`), text with fonts and whether they are
   installed, ALL expressions and keyframes, animated values sampled at the
   comp markers. Call it before touching anything and after every batch of
   changes. Do not trust that your write worked: verify it here.
-- `render_frame {compName, time, fileName}` — renders a frame to PNG in
+- `render_frame {compName, time, fileName}`: renders a frame to PNG in
   `~/Desktop/ae_probe/`. After every visual change, render 1-2 key frames,
   bring them over with device_stage_files and LOOK at them. A render takes
   ~100 ms: there is no excuse for iterating blind.
@@ -56,7 +56,7 @@ exactly there.
   looking at the top-left corner. First step after creating one:
   `modify_layer` position `{x: cx, y: cy, z: -zoom}` (for 1080×1920:
   `{540, 960, -zoom}`). An off-center camera produces diagonally skewed
-  3D text — if you see unexplained shear, check the camera.
+  3D text: if you see unexplained shear, check the camera.
 - **Crawl-style motion (content sliding along a tilted plane): FIXED
   position, animate the ANCHOR POINT.** Translating position Y slides the
   rigid plane (the tail lunges at the camera); animating the anchor point
@@ -71,7 +71,7 @@ exactly there.
   the horizon side, not the entry side.
 - **ExtendScript is ES3**: no arrow functions, const/let, or template
   literals. And a bare `{...};` in statement position is a BLOCK, not an
-  object — always assign to a variable (`var r = {...}; r;`).
+  object: always assign to a variable (`var r = {...}; r;`).
 - **Multiline expressions with `//` comments may fail** on re-read; write
   expressions on a single line with `;`.
 - **`app.fonts` gives false negatives**: the report may say
@@ -80,7 +80,7 @@ exactly there.
 
 ## MCP bugs and their status
 
-- `set_keyframe` / `set_keyframe_advanced`: FIXED (Jul 2026) — accepts
+- `set_keyframe` / `set_keyframe_advanced`: FIXED (Jul 2026): accepts
   arrays `[x,y]`, numbers and JSON strings. If an old server returns
   "Value is not an array", the workaround is expressions.
 - `get_expression`: FIXED (Jul 2026). Old servers crash with
@@ -93,10 +93,10 @@ exactly there.
 
 - Canonical repo: **`~/ae-mcp`** (git, origin = private FAILFAST fork,
   upstream = original author). Claude desktop may run a copy from
-  `~/Documents/ae-mcp` — check with `ps aux | grep ae-mcp` which one
+  `~/Documents/ae-mcp`: check with `ps aux | grep ae-mcp` which one
   actually runs before editing server code.
 - **After changing the server**: rebuild (`npx tsc`) and fully quit the
-  Claude app (Cmd+Q) — the node process is its child and toggling the
+  Claude app (Cmd+Q): the node process is its child and toggling the
   connector may not kill it. The AE CEP extension needs no changes for
   server-side edits.
 - **The device_bash FUSE mount is fragile** for heavy operations

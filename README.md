@@ -8,12 +8,12 @@
 
 | Type | Change |
 |------|--------|
-| 🐛 Fix | `set_keyframe` / `set_keyframe_advanced` now accept arrays — position/scale keyframes were impossible due to a schema serialization bug |
-| 🐛 Fix | `get_expression` no longer throws `SyntaxError` — the generator emitted an invalid ExtendScript object literal |
-| ✨ New | **`render_frame`** — renders any comp frame to PNG. Gives the AI eyes: it can look at what it just built |
-| ✨ New | **`get_comp_report`** — JSON report of a comp's real state: layers, geometry, text, fonts, expressions, keyframes, and animated values sampled at comp markers |
-| 🧠 New | **`ae-visual-workflow`** skill ([`SKILL/`](SKILL/ae-visual-workflow/SKILL.md)) — the see-measure-correct working protocol and known AE traps, so Claude knows them upfront |
-| 📖 Docs | [`docs/MANUAL.md`](docs/MANUAL.md) — team manual: step-by-step install, protocol and maintenance |
+| 🐛 Fix | `set_keyframe` / `set_keyframe_advanced` now accept arrays: position/scale keyframes were impossible due to a schema serialization bug |
+| 🐛 Fix | `get_expression` no longer throws `SyntaxError`: the generator emitted an invalid ExtendScript object literal |
+| ✨ New | **`render_frame`**: renders any comp frame to PNG. Gives the AI eyes: it can look at what it just built |
+| ✨ New | **`get_comp_report`**: JSON report of a comp's real state: layers, geometry, text, fonts, expressions, keyframes, and animated values sampled at comp markers |
+| 🧠 New | **`ae-visual-workflow`** skill ([`SKILL/`](SKILL/ae-visual-workflow/SKILL.md)): the see-measure-correct working protocol and known AE traps, so Claude knows them upfront |
+| 📖 Docs | [`docs/MANUAL.md`](docs/MANUAL.md): team manual: step-by-step install, protocol and maintenance |
 
 **Why it matters**: with `render_frame` + `get_comp_report`, Claude works in a
 *build → see → measure → correct* loop autonomously, instead of building
@@ -26,7 +26,7 @@ updates. Last synced base: `v0.1.0` (`5b692a4`).
 
 ---
 
-*Maintained solo by [@aleixsubira](https://github.com/aleixsubira) — Creative
+*Maintained solo by [@aleixsubira](https://github.com/aleixsubira): Creative
 Designer (Motion & Product) at [Fail Fast Studio](https://failfast.design).
 Issues and PRs welcome; response time depends on client deadlines.*
 
@@ -47,7 +47,7 @@ Issues and PRs welcome; response time depends on client deadlines.*
 
 ## Overview
 
-AE-MCP is a comprehensive MCP server that enables AI assistants like Claude to directly control Adobe After Effects. It provides **70+ tools** covering the full motion graphics workflow — from creating compositions to applying professional effects and expressions.
+AE-MCP is a comprehensive MCP server that enables AI assistants like Claude to directly control Adobe After Effects. It provides **70+ tools** covering the full motion graphics workflow: from creating compositions to applying professional effects and expressions.
 
 ### Key Features
 

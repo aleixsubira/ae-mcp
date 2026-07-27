@@ -1,7 +1,7 @@
-# AE-MCP — Internal Team Manual (FAILFAST)
+# AE-MCP: Internal Team Manual (FAILFAST)
 
 MCP server that lets Claude drive Adobe After Effects: compositions, layers,
-keyframe and expression animation, effects — and since July 2026, it can
+keyframe and expression animation, effects: and since July 2026, it can
 **see what it does** (frame renders and state reports). This manual covers
 team installation, our improvements over the original project, and the
 working protocol.
@@ -20,7 +20,7 @@ working protocol.
 | `set_keyframe` rejected arrays | `Unable to call "setValueAtKey"... Value is not an array` when animating position/scale | The JSON Schema for `value` declared no type and some MCP bridges stringify it. It now declares `oneOf`, and the server re-parses JSON strings (`"[540,960]"`) defensively |
 | `get_expression` crashed | `SyntaxError: Expected: ;` on reading any expression | The generator emitted a bare `{...};`, which ExtendScript parses as a block, not an object. It now assigns to a variable |
 
-### New tools — "the eyes"
+### New tools: "the eyes"
 
 - **`render_frame {compName, time, fileName?, outputDir?}`**
   Renders a comp frame to PNG (default `~/Desktop/ae_probe/`) and returns
@@ -64,7 +64,7 @@ npm run build
 }
 ```
 
-4. Restart the Claude app (Cmd+Q — closing the window is not enough).
+4. Restart the Claude app (Cmd+Q: closing the window is not enough).
 5. In After Effects: Window → Extensions → **AE-MCP** (the panel must stay
    visible: it executes the commands).
 6. Smoke test: ask Claude for `get_project_info` and a `render_frame` of
@@ -86,7 +86,7 @@ repo; also installable in Claude so it loads on its own). Summary:
    `render_frame` + look at the PNG after every visual change.
 2. **Markers as the sync interface**: every key moment gets a comp marker
    with a comment; the report samples animated values there.
-3. **Probe calibration**: for 3D geometry, don't compute the projection —
+3. **Probe calibration**: for 3D geometry, don't compute the projection:
    freeze a constant value, render, measure, and derive the mapping from
    two data points.
 4. **Confirmed AE traps**: parenting does not propagate opacity;
@@ -115,7 +115,7 @@ repo; also installable in Claude so it loads on its own). Summary:
   files through `~/Documents/ae-mcp-commands/` and the panel executes them.
 - Upstream: keeping `origin`→our fork and `upstream`→the original repo
   allows pulling updates (`git fetch upstream && git merge upstream/main`)
-  and considering a PR with our fixes — they are generic, not internal.
+  and considering a PR with our fixes: they are generic, not internal.
 
 ## 6. Internal changelog
 
