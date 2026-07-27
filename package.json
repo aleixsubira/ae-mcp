@@ -1,6 +1,6 @@
 {
   "name": "ae-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0-ff",
   "description": "Advanced After Effects MCP server for motion graphics productivity",
   "type": "module",
   "main": "dist/index.js",

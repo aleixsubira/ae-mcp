@@ -91,10 +91,12 @@ exactly there.
 
 ## This user's environment (macbook-aleix-local)
 
-- Canonical repo: **`~/ae-mcp`** (git, origin = private FAILFAST fork,
-  upstream = original author). Claude desktop may run a copy from
-  `~/Documents/ae-mcp`: check with `ps aux | grep ae-mcp` which one
-  actually runs before editing server code.
+- Single source of truth: **`~/ae-mcp`** (git; origin = public fork at
+  github.com/aleixsubira/ae-mcp, upstream = original author). Claude
+  desktop runs `~/ae-mcp/dist/index.js` directly; the old second copy in
+  `~/Documents/ae-mcp` was deleted in Jul 2026. If server behavior ever
+  contradicts the repo, confirm with `ps aux | grep ae-mcp` which path is
+  actually running.
 - **After changing the server**: rebuild (`npx tsc`) and fully quit the
   Claude app (Cmd+Q): the node process is its child and toggling the
   connector may not kill it. The AE CEP extension needs no changes for
