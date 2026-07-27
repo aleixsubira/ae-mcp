@@ -1,3 +1,31 @@
+# AE-MCP · FAILFAST Fork
+
+> Internal fork of [after-effects-mcp](https://github.com/ishu86/after-effects-mcp)
+> maintained by **FAILFAST**. The original project README is preserved below;
+> this section summarizes what this fork adds.
+
+## What this fork adds (v1.1.0-ff, Jul 2026)
+
+| Type | Change |
+|------|--------|
+| 🐛 Fix | `set_keyframe` / `set_keyframe_advanced` now accept arrays — position/scale keyframes were impossible due to a schema serialization bug |
+| 🐛 Fix | `get_expression` no longer throws `SyntaxError` — the generator emitted an invalid ExtendScript object literal |
+| ✨ New | **`render_frame`** — renders any comp frame to PNG. Gives the AI eyes: it can look at what it just built |
+| ✨ New | **`get_comp_report`** — JSON report of a comp's real state: layers, geometry, text, fonts, expressions, keyframes, and animated values sampled at comp markers |
+| 🧠 New | **`ae-visual-workflow`** skill ([`SKILL/`](SKILL/ae-visual-workflow/SKILL.md)) — the see-measure-correct working protocol and known AE traps, so Claude knows them upfront |
+| 📖 Docs | [`docs/MANUAL.md`](docs/MANUAL.md) — team manual: step-by-step install, protocol and maintenance |
+
+**Why it matters**: with `render_frame` + `get_comp_report`, Claude works in a
+*build → see → measure → correct* loop autonomously, instead of building
+blind and hoping for the best.
+
+**For the team**: start with [`docs/MANUAL.md`](docs/MANUAL.md).
+
+**Upstream**: the `upstream` remote points to the original repo to pull future
+updates. Last synced base: `v0.1.0` (`5b692a4`).
+
+---
+
 <p align="center">
   <img src="https://img.shields.io/badge/After%20Effects-2024+-9999FF?style=for-the-badge&logo=adobe-after-effects&logoColor=white" alt="After Effects 2024+"/>
   <img src="https://img.shields.io/badge/MCP-Protocol-00D4AA?style=for-the-badge" alt="MCP Protocol"/>

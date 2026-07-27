@@ -1,126 +1,125 @@
-# AE-MCP — Manual interno (FailFast)
+# AE-MCP — Internal Team Manual (FAILFAST)
 
-Servidor MCP que permite a Claude controlar Adobe After Effects: crear
-composiciones, capas, animación por expresiones y keyframes, efectos — y
-desde julio de 2026, **ver lo que hace** (render de frames e informes de
-estado). Este manual cubre la instalación para el equipo, las mejoras
-propias sobre el proyecto original y el protocolo de trabajo.
+MCP server that lets Claude drive Adobe After Effects: compositions, layers,
+keyframe and expression animation, effects — and since July 2026, it can
+**see what it does** (frame renders and state reports). This manual covers
+team installation, our improvements over the original project, and the
+working protocol.
 
-- Repo original (upstream): https://github.com/ishu86/after-effects-mcp
-- Nuestro fork interno (privado): https://github.com/aleixgomez-ff/ae-mcp
+- Upstream repo: https://github.com/ishu86/after-effects-mcp
+- Our internal fork (private): https://github.com/aleixgomez-ff/ae-mcp
 
 ---
 
-## 1. Qué hemos mejorado (jul 2026, commit `78bb951`)
+## 1. What we improved (Jul 2026, v1.1.0-ff)
 
-### Bugs arreglados
+### Fixed bugs
 
-| Bug | Síntoma | Arreglo |
+| Bug | Symptom | Fix |
 |---|---|---|
-| `set_keyframe` rechazaba arrays | `Unable to call "setValueAtKey"... Value is not an array` al animar posición/escala | El JSON Schema de `value` no declaraba tipo y algunos puentes MCP lo convertían a string. Ahora declara `oneOf` y además el servidor re-parsea strings JSON (`"[540,960]"`) por si el puente insiste |
-| `get_expression` reventaba | `SyntaxError: Expected: ;` al leer cualquier expresión | El generador emitía `{...};` suelto, que ExtendScript interpreta como bloque, no como objeto. Ahora asigna a variable |
+| `set_keyframe` rejected arrays | `Unable to call "setValueAtKey"... Value is not an array` when animating position/scale | The JSON Schema for `value` declared no type and some MCP bridges stringify it. It now declares `oneOf`, and the server re-parses JSON strings (`"[540,960]"`) defensively |
+| `get_expression` crashed | `SyntaxError: Expected: ;` on reading any expression | The generator emitted a bare `{...};`, which ExtendScript parses as a block, not an object. It now assigns to a variable |
 
-### Herramientas nuevas — "los ojos"
+### New tools — "the eyes"
 
 - **`render_frame {compName, time, fileName?, outputDir?}`**
-  Renderiza un frame de la compo a PNG (por defecto en `~/Desktop/ae_probe/`)
-  y devuelve la ruta. Claude puede mirar el resultado de lo que acaba de
-  construir. Un render tarda ~100 ms.
+  Renders a comp frame to PNG (default `~/Desktop/ae_probe/`) and returns
+  the path. Claude can look at what it just built. A render takes ~100 ms.
 - **`get_comp_report {compName, sampleTimes?}`**
-  Informe completo de una compo en JSON: capas con geometría real
-  (`sourceRectAtTime`), transformaciones, textos con fuente y tamaño,
-  fuentes usadas vs instaladas, todas las expresiones y keyframes, y
-  valores animados muestreados en los marcadores de la compo.
+  Full comp report as JSON: layers with real geometry
+  (`sourceRectAtTime`), transforms, text with fonts and sizes, fonts used
+  vs installed, every expression and keyframe, and animated values sampled
+  at the comp markers.
 
-Con estas dos herramientas Claude trabaja en bucle *construir → ver →
-medir → corregir* sin intervención humana. Antes construía a ciegas.
+With these two tools Claude works in a *build → see → measure → correct*
+loop without human intervention. Before, it built blind.
 
 ---
 
-## 2. Instalación (macOS, por miembro del equipo)
+## 2. Installation (macOS, per team member)
 
-Requisitos: After Effects 2024+, Node 18+, app de Claude desktop.
+Requirements: After Effects 2024+, Node 18+, Claude desktop app.
 
 ```bash
-# 1. Clonar NUESTRO fork (no el upstream)
+# 1. Clone OUR fork (not upstream)
 git clone https://github.com/aleixgomez-ff/ae-mcp.git ~/ae-mcp
 cd ~/ae-mcp
 npm install
 npm run build
 
-# 2. Instalar la extensión CEP en After Effects
+# 2. Install the CEP extension into After Effects
 ./scripts/install-cep.sh
 ```
 
 ```jsonc
-// 3. Registrar el servidor en Claude desktop:
+// 3. Register the server in Claude desktop:
 // ~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "ae-mcp": {
       "command": "node",
-      "args": ["/Users/TU_USUARIO/ae-mcp/dist/index.js"]
+      "args": ["/Users/YOUR_USER/ae-mcp/dist/index.js"]
     }
   }
 }
 ```
 
-4. Reiniciar la app de Claude (Cmd+Q, no basta cerrar la ventana).
-5. Abrir After Effects → Window → Extensions → **AE-MCP** (el panel debe
-   quedar visible: es quien ejecuta los comandos).
-6. Prueba de humo: pedir a Claude `get_project_info` y un
-   `render_frame` de cualquier compo.
+4. Restart the Claude app (Cmd+Q — closing the window is not enough).
+5. In After Effects: Window → Extensions → **AE-MCP** (the panel must stay
+   visible: it executes the commands).
+6. Smoke test: ask Claude for `get_project_info` and a `render_frame` of
+   any comp.
 
-**Regla de oro: UN solo clon por máquina.** Si hay un clon en `~/ae-mcp` y
-una copia en `~/Documents/ae-mcp`, la config de Claude ejecutará una y tú
-editarás la otra, y perderás una tarde averiguándolo (experiencia real).
-`ps aux | grep ae-mcp` te dice cuál corre de verdad.
-
----
-
-## 3. Protocolo de trabajo con Claude
-
-El detalle vive en la skill **`ae-visual-workflow`** (en `SKILL/` de este
-repo; también instalable en Claude para que la cargue sola). Resumen:
-
-1. **Nunca construir a ciegas**: `get_comp_report` antes de tocar nada;
-   `render_frame` + mirar el PNG después de cada cambio visual.
-2. **Marcadores como interfaz**: cada instante clave de sincronía lleva
-   marcador con comentario; el informe muestrea los valores animados ahí.
-3. **Calibración por sondas**: para geometría 3D no se calcula la
-   proyección — se fija un valor constante, se renderiza, se mide, y con
-   dos puntos se deriva el mapeo.
-4. **Trampas de AE confirmadas**: el parenting no propaga opacidad;
-   `add_camera_layer` crea la cámara descentrada (recolocar a
-   `[cx, cy, -zoom]` siempre); para crawls se anima el Anchor Point, no
-   la posición; ExtendScript es ES3 estricto.
+**Golden rule: ONE clone per machine.** If there is a clone in `~/ae-mcp`
+and a copy in `~/Documents/ae-mcp`, Claude's config will run one while you
+edit the other, and you will lose an afternoon figuring it out (true
+story). `ps aux | grep ae-mcp` tells you which one actually runs.
 
 ---
 
-## 4. Problemas conocidos (pendientes, poca prioridad)
+## 3. Working protocol with Claude
 
-- `save_project` sin `path` falla si el proyecto nunca se guardó: pasar
-  ruta la primera vez.
-- El chequeo de fuentes de `get_comp_report` puede dar `installed:false`
-  para fuentes que renderizan bien (limitación de `app.fonts`): confirmar
-  con un render antes de creer el flag.
-- `saveFrameToPng` (base de `render_frame`) es API no documentada de
-  Adobe: estable desde CC2020, pero si una versión futura la retira,
-  `render_frame` fallará con mensaje claro.
+The details live in the **`ae-visual-workflow`** skill (in `SKILL/` in this
+repo; also installable in Claude so it loads on its own). Summary:
 
-## 5. Mantenimiento
+1. **Never build blind**: `get_comp_report` before touching anything;
+   `render_frame` + look at the PNG after every visual change.
+2. **Markers as the sync interface**: every key moment gets a comp marker
+   with a comment; the report samples animated values there.
+3. **Probe calibration**: for 3D geometry, don't compute the projection —
+   freeze a constant value, render, measure, and derive the mapping from
+   two data points.
+4. **Confirmed AE traps**: parenting does not propagate opacity;
+   `add_camera_layer` creates the camera off-center (always reposition to
+   `[cx, cy, -zoom]`); crawl-type motion is animated via Anchor Point, not
+   position; ExtendScript is strict ES3.
 
-- Tocar código → `npx tsc` → Cmd+Q a Claude y reabrir (el proceso node es
-  hijo de la app; un toggle del conector puede no matarlo).
-- La extensión CEP casi nunca necesita cambios: los comandos viajan como
-  ficheros JSON por `~/Documents/ae-mcp-commands/` y el panel los ejecuta.
-- Upstream: mantener `origin` apuntando al repo de ishu86 permite traer
-  sus actualizaciones (`git fetch origin && git merge origin/main`) y
-  valorar abrir PR con nuestros fixes — son genéricos, no internos.
+---
 
-## 6. Changelog interno
+## 4. Known issues (pending, low priority)
 
-- **2026-07-26** (`78bb951`): fixes de `set_keyframe` y `get_expression`;
-  nuevas `render_frame` y `get_comp_report`; skill `ae-visual-workflow`.
-  Validado con un caso real: una compo con texto 3D en perspectiva
-  calibrada íntegramente por Claude en ~10 ciclos de render.
+- `save_project` without `path` fails if the project was never saved: pass
+  a path the first time.
+- The font check in `get_comp_report` can report `installed:false` for
+  fonts that render fine (an `app.fonts` limitation): confirm with a
+  render before trusting the flag.
+- `saveFrameToPng` (behind `render_frame`) is undocumented Adobe API:
+  stable since CC2020, but if a future version removes it, `render_frame`
+  will fail with a clear message.
+
+## 5. Maintenance
+
+- Touch code → `npx tsc` → Cmd+Q Claude and reopen (the node process is a
+  child of the app; toggling the connector may not kill it).
+- The CEP extension almost never needs changes: commands travel as JSON
+  files through `~/Documents/ae-mcp-commands/` and the panel executes them.
+- Upstream: keeping `origin`→our fork and `upstream`→the original repo
+  allows pulling updates (`git fetch upstream && git merge upstream/main`)
+  and considering a PR with our fixes — they are generic, not internal.
+
+## 6. Internal changelog
+
+- **2026-07-26** (`v1.1.0-ff`): `set_keyframe` and `get_expression` fixes;
+  new `render_frame` and `get_comp_report`; `ae-visual-workflow` skill.
+  Validated on a real case: a comp with 3D perspective text calibrated
+  entirely by Claude in ~10 render cycles.
