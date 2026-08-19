@@ -489,12 +489,19 @@ export function generatePrecomposeLayers(params: {
   script += 'var moveAttributes = ' + (params.moveAttributes !== false) + ';\n';
 
   // Precompose
-  script += 'var precompLayer = comp.layers.precompose(layerIndices, precompName, moveAttributes);\n';
+  // OJO: precompose() devuelve el CompItem NUEVO, no la capa. Leer .index sobre
+  // ese resultado daba "TypeError: undefined is not an object" y hacia parecer
+  // que la precomposicion fallaba, cuando en realidad si se hacia.
+  script += 'var precompItem = comp.layers.precompose(layerIndices, precompName, moveAttributes);\n';
+  // La capa nueva ocupa el sitio de la mas alta de las precompuestas.
+  script += 'var minIdx = layerIndices[0];\n';
+  script += 'for (var pi = 1; pi < layerIndices.length; pi++) { if (layerIndices[pi] < minIdx) minIdx = layerIndices[pi]; }\n';
+  script += 'var precompLayer = comp.layer(minIdx);\n';
 
   script += generateResultObject({
     index: 'precompLayer.index',
     name: 'precompLayer.name',
-    sourceCompId: 'precompLayer.source.id'
+    sourceCompId: 'precompItem.id'
   });
 
   return wrapInUndoGroup(script, 'Precompose Layers');
@@ -716,4 +723,63 @@ export function generateGetLayerInfo(params: {
   script += 'info;\n';
 
   return script;
+}
+
+/**
+ * Generate script to move a layer within the stacking order.
+ *
+ * AE has always been able to do this from script — `moveToBeginning()`,
+ * `moveToEnd()`, `moveBefore(other)` and `moveAfter(other)` are plain Layer
+ * methods. The MCP just never exposed them, which forced a manual drag every
+ * time a layer had to go under the ones already in the comp (new layers always
+ * enter at the top).
+ *
+ * Note the vocabulary: in AE, index 1 is the TOP of the stack, so "beginning"
+ * means front-most and "end" means back-most.
+ */
+export function generateReorderLayer(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  to: 'top' | 'bottom' | 'before' | 'after';
+  refLayerIndex?: number;
+  refLayerName?: string;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+
+  script += 'var movedName = layer.name;\n';
+  script += 'var fromIndex = layer.index;\n';
+
+  if (params.to === 'top') {
+    script += 'layer.moveToBeginning();\n';
+  } else if (params.to === 'bottom') {
+    script += 'layer.moveToEnd();\n';
+  } else {
+    if (params.refLayerIndex === undefined && params.refLayerName === undefined) {
+      script += 'throw new Error("to:\'' + params.to + '\' needs refLayerIndex or refLayerName");\n';
+    }
+    if (params.refLayerName !== undefined) {
+      script += 'var ref = null;\n';
+      script += 'for (var ri = 1; ri <= comp.numLayers; ri++) {\n';
+      script += '  if (comp.layer(ri).name === "' + escapeString(params.refLayerName) + '") { ref = comp.layer(ri); break; }\n';
+      script += '}\n';
+      script += 'if (!ref) { throw new Error("Reference layer not found: ' + escapeString(params.refLayerName) + '"); }\n';
+    } else {
+      script += 'var ref = comp.layer(' + params.refLayerIndex + ');\n';
+    }
+    script += params.to === 'before' ? 'layer.moveBefore(ref);\n' : 'layer.moveAfter(ref);\n';
+  }
+
+  script += generateResultObject({
+    success: 'true',
+    name: 'movedName',
+    fromIndex: 'fromIndex',
+    toIndex: 'layer.index'
+  });
+
+  return wrapInUndoGroup(script, 'Reorder Layer');
 }

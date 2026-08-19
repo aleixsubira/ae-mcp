@@ -26,7 +26,8 @@ export {
   generateGetCompositionInfo,
   generateSetActiveComposition,
   generateRenderFrame,
-  generateGetCompReport
+  generateGetCompReport,
+  generateDumpCompReport
 } from './generators/compositionGenerators.js';
 
 // Layer generators
@@ -41,6 +42,7 @@ export {
   generateAddLightLayer,
   generateAddAVLayer,
   generatePrecomposeLayers,
+  generateReorderLayer,
   generateModifyLayer,
   generateDeleteLayer,
   generateListLayers,
@@ -81,6 +83,7 @@ export {
   generateApplyEffectTemplate,
   generateModifyEffectProperties,
   generateRemoveEffect,
+  generateRenameEffect,
   generateReorderEffects,
   generateCopyEffects,
   generateListEffects,
@@ -101,6 +104,8 @@ export {
   generateImportFolder,
   generateReplaceFootage,
   generateOrganizeProjectItems,
+  generateListProjectFolders,
+  generateMoveProjectItem,
   generateFindMissingFootage,
   generateCollectFiles,
   generateReduceProject,

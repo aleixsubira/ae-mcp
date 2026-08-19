@@ -573,3 +573,55 @@ export function getEffectTemplates(): Record<string, string> {
   }
   return templates;
 }
+
+
+/**
+ * Rename an effect on a layer.
+ *
+ * Effect names are referenced BY NAME inside expressions
+ * (`effect("Producto Escena 1")(1)`), so renaming one breaks every expression
+ * that points at it, silently in the case of dropdown pseudo-effects. Read the
+ * dependent expressions with get_expression before renaming and repair them
+ * with set_expression afterwards.
+ */
+export function generateRenameEffect(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  effectIndex?: number;
+  effectName?: string;
+  newName: string;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+
+  script += 'var effects = layer.property("Effects");\n';
+  script += 'if (!effects) { throw new Error("Layer has no effects"); }\n';
+
+  if (params.effectIndex) {
+    script += 'var effect = effects.property(' + params.effectIndex + ');\n';
+  } else if (params.effectName) {
+    script += 'var effect = effects.property("' + escapeString(params.effectName) + '");\n';
+  } else {
+    script += 'throw new Error("effectIndex or effectName must be provided");\n';
+    return script;
+  }
+
+  script += 'if (!effect) { throw new Error("Effect not found"); }\n';
+  script += 'var previousName = effect.name;\n';
+  script += 'effect.name = "' + escapeString(params.newName) + '";\n';
+  script += 'var check = effects.property("' + escapeString(params.newName) + '");\n';
+
+  script += generateResultObject({
+    success: 'true',
+    previousName: 'previousName',
+    name: 'effect.name',
+    effectIndex: 'effect.propertyIndex',
+    resolvableByNewName: '(check ? true : false)'
+  });
+
+  return wrapInUndoGroup(script, 'Rename Effect');
+}

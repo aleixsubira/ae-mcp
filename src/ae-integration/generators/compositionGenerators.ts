@@ -472,3 +472,83 @@ export function generateGetCompReport(params: {
 
   return script;
 }
+
+/**
+ * generateDumpCompReport — el mismo informe que generateGetCompReport, pero
+ * ESCRITO A FICHERO en vez de devuelto a la conversacion.
+ *
+ * ⚠️ EL PORQUE, que no es capricho: el informe de una comp son decenas de miles
+ * de caracteres. Para documentar 26 masters, devolverlos por el canal del MCP
+ * es inviable. Con esto el volcado cuesta una linea de respuesta y el fichero
+ * queda en disco listo para que lo lea un script.
+ *
+ * ⚠️ ExtendScript es ES3 y NO tiene JSON.stringify, asi que se serializa a mano.
+ * Todo lo que no sea ASCII imprimible sale como \uXXXX: los nombres de capa de
+ * este proyecto van llenos de ñ, ·, ▹ y ⚙, y por ahi se rompe un fichero.
+ */
+export function generateDumpCompReport(params: {
+  compId?: number;
+  compName?: string;
+  outPath: string;
+  sampleTimes?: number[];
+  textPreview?: number;
+}): string {
+  // El generador de siempre deja el objeto en `report`. Se le quita la ultima
+  // linea, que solo lo evalua para devolverlo.
+  let script = generateGetCompReport({
+    compId: params.compId,
+    compName: params.compName,
+    sampleTimes: params.sampleTimes,
+    textPreview: params.textPreview,
+  }).replace(/report;\n$/, '');
+
+  script += 'function __esc(s) {\n';
+  script += '  s = String(s); var out = "", c, code, h;\n';
+  script += '  for (var i = 0; i < s.length; i++) {\n';
+  script += '    c = s.charAt(i); code = s.charCodeAt(i);\n';
+  script += '    if (c === "\\"") { out += "\\\\\\""; }\n';
+  script += '    else if (c === "\\\\") { out += "\\\\\\\\"; }\n';
+  script += '    else if (code === 10) { out += "\\\\n"; }\n';
+  script += '    else if (code === 13) { out += "\\\\r"; }\n';
+  script += '    else if (code === 9) { out += "\\\\t"; }\n';
+  script += '    else if (code < 32 || code > 126) {\n';
+  script += '      h = code.toString(16); while (h.length < 4) { h = "0" + h; }\n';
+  script += '      out += "\\\\u" + h;\n';
+  script += '    } else { out += c; }\n';
+  script += '  }\n';
+  script += '  return "\\"" + out + "\\"";\n';
+  script += '}\n';
+
+  script += 'function __ser(v) {\n';
+  script += '  if (v === null || v === undefined) { return "null"; }\n';
+  script += '  var t = typeof v;\n';
+  script += '  if (t === "number") { return isFinite(v) ? String(v) : "null"; }\n';
+  script += '  if (t === "boolean") { return v ? "true" : "false"; }\n';
+  script += '  if (t === "string") { return __esc(v); }\n';
+  script += '  if (v instanceof Array) {\n';
+  script += '    var a = []; for (var i = 0; i < v.length; i++) { a.push(__ser(v[i])); }\n';
+  script += '    return "[" + a.join(",") + "]";\n';
+  script += '  }\n';
+  script += '  var o = [];\n';
+  script += '  for (var k in v) {\n';
+  script += '    if (!v.hasOwnProperty(k)) { continue; }\n';
+  script += '    if (typeof v[k] === "function") { continue; }\n';
+  script += '    o.push(__esc(k) + ":" + __ser(v[k]));\n';
+  script += '  }\n';
+  script += '  return "{" + o.join(",") + "}";\n';
+  script += '}\n';
+
+  const salida = params.outPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  script += 'var __txt = __ser(report);\n';
+  script += 'var __f = new File("' + salida + '");\n';
+  script += 'var __dir = __f.parent;\n';
+  script += 'if (!__dir.exists) { __dir.create(); }\n';
+  script += '__f.encoding = "UTF-8";\n';
+  script += 'if (!__f.open("w")) { throw new Error("No se pudo abrir para escribir: " + __f.fsName); }\n';
+  script += '__f.write(__txt);\n';
+  script += '__f.close();\n';
+  script += 'var __res = { success: true, path: __f.fsName, bytes: __txt.length, comp: report.comp.name, layers: report.comp.numLayers };\n';
+  script += '__res;\n';
+
+  return script;
+}

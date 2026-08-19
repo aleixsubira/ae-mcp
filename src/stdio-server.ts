@@ -234,6 +234,22 @@ const TOOLS = [
     },
     generator: generators.generateGetCompReport
   },
+  {
+    name: 'dump_comp_report',
+    description: 'Same full report as get_comp_report, but WRITTEN TO A FILE instead of returned. Use it to document many comps: the report is tens of thousands of characters and returning it through the MCP channel does not scale. Returns only the path and the byte count.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number', description: 'Composition ID' },
+        compName: { type: 'string', description: 'Composition name' },
+        outPath: { type: 'string', description: 'Absolute path of the .json to write. Its folder is created if missing.' },
+        sampleTimes: { type: 'array', items: { type: 'number' }, description: 'Times in seconds to sample animated values' },
+        textPreview: { type: 'number', description: 'Max characters of text per layer (default 120)' }
+      },
+      required: ['outPath']
+    },
+    generator: generators.generateDumpCompReport
+  },
 
   // ============================================
   // LAYER TOOLS
@@ -400,6 +416,26 @@ const TOOLS = [
       }
     },
     generator: generators.generateAddAVLayer
+  },
+  {
+    name: 'reorder_layer',
+    description: 'Move a layer within the stacking order: to the top, to the bottom, or before/after another layer. ' +
+      'Index 1 is the TOP of the stack in After Effects, so "top" is front-most and "bottom" is back-most. ' +
+      'New layers always enter at the top, so this is what puts a background under the rest.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        to: { type: 'string', enum: ['top', 'bottom', 'before', 'after'], description: 'Where to move it' },
+        refLayerIndex: { type: 'number', description: 'Reference layer, for before/after' },
+        refLayerName: { type: 'string', description: 'Reference layer, for before/after' }
+      },
+      required: ['to']
+    },
+    generator: generators.generateReorderLayer
   },
   {
     name: 'precompose_layers',
@@ -922,6 +958,27 @@ const TOOLS = [
     generator: generators.generateModifyEffectProperties
   },
   {
+    name: 'rename_effect',
+    description: 'Rename an effect on a layer. WARNING: expressions reference effects by ' +
+      'name, so read the dependent expressions with get_expression first and repair them ' +
+      'with set_expression afterwards. A dropdown pseudo-effect breaks silently, with no ' +
+      'expression error.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        effectName: { type: 'string' },
+        effectIndex: { type: 'number' },
+        newName: { type: 'string' }
+      },
+      required: ['newName']
+    },
+    generator: generators.generateRenameEffect
+  },
+  {
     name: 'remove_effect',
     description: 'Remove an effect from a layer',
     inputSchema: {
@@ -1116,6 +1173,27 @@ const TOOLS = [
       required: ['newPath']
     },
     generator: generators.generateReplaceFootage
+  },
+  {
+    name: 'list_project_folders',
+    description: 'List the project folder tree: id, name, full path and item count. Only folders, so a large project stays readable. Use it before move_project_item.',
+    inputSchema: { type: 'object', properties: {} },
+    generator: generators.generateListProjectFolders
+  },
+  {
+    name: 'move_project_item',
+    description: 'Move ONE project item (comp, footage, folder) into a folder. This is the surgical alternative to organize_project_items, which invents Compositions/Footage/Solids folders and dumps every root-level item into them.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'number' },
+        itemName: { type: 'string' },
+        folderId: { type: 'number' },
+        folderName: { type: 'string' },
+        createFolder: { type: 'boolean', description: 'Create the destination folder if it does not exist' }
+      }
+    },
+    generator: generators.generateMoveProjectItem
   },
   {
     name: 'organize_project_items',

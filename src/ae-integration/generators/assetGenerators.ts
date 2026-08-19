@@ -382,3 +382,95 @@ export function generateRemoveProxy(params: {
 
   return wrapInUndoGroup(script, 'Remove Proxy');
 }
+
+/**
+ * Generate script to list the project's folder tree.
+ *
+ * Needed before moving anything: you cannot file a comp into a folder you
+ * cannot see. Returns only FolderItems, with their path, so a 700-item project
+ * stays readable.
+ */
+export function generateListProjectFolders(): string {
+  let script = '';
+  script += generateProjectCheck();
+
+  script += 'function folderPath(f) {\n';
+  script += '  var parts = [];\n';
+  script += '  var cur = f;\n';
+  script += '  while (cur && cur !== app.project.rootFolder) { parts.unshift(cur.name); cur = cur.parentFolder; }\n';
+  script += '  return parts.join(" / ");\n';
+  script += '}\n';
+  script += 'var out = [];\n';
+  script += 'for (var i = 1; i <= app.project.numItems; i++) {\n';
+  script += '  var it = app.project.item(i);\n';
+  script += '  if (!(it instanceof FolderItem)) continue;\n';
+  script += '  out.push({ id: it.id, name: it.name, path: folderPath(it), items: it.numItems });\n';
+  script += '}\n';
+
+  script += generateResultObject({
+    total: 'out.length',
+    folders: 'out'
+  });
+
+  return script;
+}
+
+/**
+ * Generate script to move one project item into a folder.
+ *
+ * This is the surgical version of organize_project_items, which is a blunt
+ * instrument: that one invents "Compositions"/"Footage"/"Solids" folders and
+ * dumps every root-level item into them, which wrecks a project that already
+ * has a folder structure.
+ */
+export function generateMoveProjectItem(params: {
+  itemId?: number;
+  itemName?: string;
+  folderId?: number;
+  folderName?: string;
+  createFolder?: boolean;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+
+  // Find the item
+  if (params.itemId !== undefined) {
+    script += 'var item = app.project.itemByID(' + params.itemId + ');\n';
+    script += 'if (!item) { throw new Error("Item not found by id: ' + params.itemId + '"); }\n';
+  } else {
+    script += 'var item = null;\n';
+    script += 'for (var i = 1; i <= app.project.numItems; i++) {\n';
+    script += '  if (app.project.item(i).name === "' + escapeString(params.itemName || '') + '") { item = app.project.item(i); break; }\n';
+    script += '}\n';
+    script += 'if (!item) { throw new Error("Item not found: ' + escapeString(params.itemName || '') + '"); }\n';
+  }
+
+  // Find the destination folder
+  if (params.folderId !== undefined) {
+    script += 'var folder = app.project.itemByID(' + params.folderId + ');\n';
+    script += 'if (!folder || !(folder instanceof FolderItem)) { throw new Error("Folder not found by id: ' + params.folderId + '"); }\n';
+  } else {
+    script += 'var folder = null;\n';
+    script += 'for (var j = 1; j <= app.project.numItems; j++) {\n';
+    script += '  var cand = app.project.item(j);\n';
+    script += '  if (cand instanceof FolderItem && cand.name === "' + escapeString(params.folderName || '') + '") { folder = cand; break; }\n';
+    script += '}\n';
+    if (params.createFolder) {
+      script += 'if (!folder) { folder = app.project.items.addFolder("' + escapeString(params.folderName || '') + '"); }\n';
+    } else {
+      script += 'if (!folder) { throw new Error("Folder not found: ' + escapeString(params.folderName || '') + '"); }\n';
+    }
+  }
+
+  script += 'var fromName = (item.parentFolder === app.project.rootFolder) ? "(raiz)" : item.parentFolder.name;\n';
+  script += 'item.parentFolder = folder;\n';
+
+  script += generateResultObject({
+    success: 'true',
+    item: 'item.name',
+    from: 'fromName',
+    to: 'folder.name'
+  });
+
+  return wrapInUndoGroup(script, 'Move Project Item');
+}
