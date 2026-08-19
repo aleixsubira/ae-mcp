@@ -3,8 +3,52 @@
 > Internal fork of [after-effects-mcp](https://github.com/ishu86/after-effects-mcp)
 > maintained by **FAILFAST**. The original project README is preserved below;
 > this section summarizes what this fork adds.
+>
+> Every tool here exists because production work hit a wall without it. None of
+> them were written speculatively.
 
-## What this fork adds (v1.1.0-ff, Jul 2026)
+## Given back to the original project
+
+| PR | What | Status |
+|----|------|--------|
+| [#2](https://github.com/ishu86/after-effects-mcp/pull/2) | keyframe and expression fixes, plus `render_frame` and `get_comp_report` | **merged** 28 Jul 2026 |
+| [#3](https://github.com/ishu86/after-effects-mcp/pull/3) | `precompose_layers` reported a failure that had not happened | open |
+
+On the way in, the maintainer hardened the #2 tools: `get_comp_report` no longer
+emits `NaN`/`Infinity` (which broke the JSON bridge), `render_frame` verifies its
+output file and sanitizes the filename, the font check handles AE 24+ nested
+`allFonts`, and `set_keyframe` accepts `{x,y,z}` objects. Those four fixes are
+merged back into this fork as of 19 Aug 2026, so the two sides do not drift.
+
+## What this fork adds (v1.3.0-ff, Aug 2026)
+
+| Type | Change |
+|------|--------|
+| 🐛 Fix | `precompose_layers` threw `TypeError` and looked like it had failed, when the precomposition had actually happened: `precompose()` returns the new `CompItem`, not the new layer |
+| ✨ New | **`reorder_layer`**: move a layer within a comp. New layers always enter at the top, so every background had to be dragged down by hand. AE always allowed `moveToBeginning`/`moveBefore` from script; the server just never exposed them |
+| ✨ New | **`rename_effect`**: rename an effect without deleting and rebuilding it, which lost its values |
+| ✨ New | **`list_project_folders`**: read the project tree, so moving anything is no longer blind |
+| ✨ New | **`move_project_item`**: move one item. `organize_project_items` is a blunt instrument: it invents `Compositions`/`Footage`/`Solids` folders and empties the root into them |
+| ✨ New | **`dump_comp_report`**: the same report as `get_comp_report`, written to a file. One report is tens of thousands of characters, so returning dozens of them through the MCP channel is not possible. ExtendScript is ES3 with no `JSON.stringify`, so it ships its own serialiser and escapes every non-ASCII character, because layer names are full of accents and symbols |
+| ✨ New | **`set_dropdown_items`**: populate a Dropdown Menu Control from script, keeping the effect's name |
+| ✨ New | **`get_dropdown_items`**: read back what a dropdown actually offers, instead of trusting the last write |
+| ✨ New | **`increment_and_save`**: save a new version without overwriting the previous one, so a checkpoint cannot destroy the state it was meant to protect |
+| 🔄 Sync | merged `upstream/main`: the four fixes the maintainer made to the #2 tools before merging them |
+
+**Why it matters**: `render_frame` + `get_comp_report` let Claude *see* what it
+built. The eight tools above let it *restructure* a project: reorder, rename,
+move and document it without a single manual drag.
+
+## v1.2.0-ff, Aug 2026
+
+| Type | Change |
+|------|--------|
+| ✨ New | configurable command folder: the bridge is no longer pinned to one hard-coded path, and falls back to the legacy location |
+| 🐛 Fix | CEP install is robust to a missing extensions folder and to an existing symlink |
+
+## v1.1.0-ff, Jul 2026
+
+All of it merged upstream as [PR #2](https://github.com/ishu86/after-effects-mcp/pull/2).
 
 | Type | Change |
 |------|--------|
@@ -15,14 +59,10 @@
 | 🧠 New | **`ae-visual-workflow`** skill ([`SKILL/`](SKILL/ae-visual-workflow/SKILL.md)): the see-measure-correct working protocol and known AE traps, so Claude knows them upfront |
 | 📖 Docs | [`docs/MANUAL.md`](docs/MANUAL.md): team manual: step-by-step install, protocol and maintenance |
 
-**Why it matters**: with `render_frame` + `get_comp_report`, Claude works in a
-*build → see → measure → correct* loop autonomously, instead of building
-blind and hoping for the best.
-
 **For the team**: start with [`docs/MANUAL.md`](docs/MANUAL.md).
 
 **Upstream**: the `upstream` remote points to the original repo to pull future
-updates. Last synced base: `v0.1.0` (`5b692a4`).
+updates. Last synced base: `8d14179` (19 Aug 2026).
 
 ---
 
