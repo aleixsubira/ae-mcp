@@ -410,11 +410,20 @@ export function generateGetCompReport(params: {
   script += '}\n';
 
   // -- layers --
+  // A shy layer only disappears if the comp has the switch on. Reporting the
+  // layer flag without this one says nothing about what is actually visible.
+  script += 'try { report.comp.hideShyLayers = comp.hideShyLayers; } catch (eH) {}\n';
   script += 'report.layers = [];\n';
   script += 'for (var li = 1; li <= comp.numLayers; li++) {\n';
   script += '  var ly = comp.layer(li);\n';
   script += '  var L = { index: li, name: ly.name, matchName: ly.matchName, enabled: ly.enabled, inPoint: __r2(ly.inPoint), outPoint: __r2(ly.outPoint) };\n';
   script += '  try { L.threeD = ly.threeDLayer; } catch (e3) {}\n';
+  // shy, solo, locked: the three switches that decide what a person actually
+  // sees and can touch when they open the comp. Without them a report cannot
+  // answer "what does the client see", only "what exists".
+  script += '  try { L.shy = ly.shy; } catch (eS) {}\n';
+  script += '  try { L.solo = ly.solo; } catch (eSo) {}\n';
+  script += '  try { L.locked = ly.locked; } catch (eL) {}\n';
   script += '  try { L.parent = ly.parent ? ly.parent.name : null; } catch (eP) {}\n';
   // What the layer IS and what it CONTAINS. Without these the report is flat:
   // a precomposition looks like any other layer, so nothing downstream can walk
