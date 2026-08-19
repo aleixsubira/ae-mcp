@@ -416,6 +416,28 @@ export function generateGetCompReport(params: {
   script += '  var L = { index: li, name: ly.name, matchName: ly.matchName, enabled: ly.enabled, inPoint: __r2(ly.inPoint), outPoint: __r2(ly.outPoint) };\n';
   script += '  try { L.threeD = ly.threeDLayer; } catch (e3) {}\n';
   script += '  try { L.parent = ly.parent ? ly.parent.name : null; } catch (eP) {}\n';
+  // What the layer IS and what it CONTAINS. Without these the report is flat:
+  // a precomposition looks like any other layer, so nothing downstream can walk
+  // into it, and anything living inside one is invisible.
+  script += '  try {\n';
+  script += '    if (ly instanceof TextLayer) { L.kind = "text"; }\n';
+  script += '    else if (ly instanceof ShapeLayer) { L.kind = "shape"; }\n';
+  script += '    else if (ly instanceof CameraLayer) { L.kind = "camera"; }\n';
+  script += '    else if (ly instanceof LightLayer) { L.kind = "light"; }\n';
+  script += '    else if (ly.nullLayer) { L.kind = "null"; }\n';
+  script += '    else if (ly.adjustmentLayer) { L.kind = "adjustment"; }\n';
+  script += '    else if (ly.source instanceof CompItem) { L.kind = "precomp"; L.source = ly.source.name; L.sourceId = ly.source.id; }\n';
+  script += '    else if (ly.source) { L.kind = "footage"; L.source = ly.source.name; }\n';
+  script += '    else { L.kind = "otra"; }\n';
+  script += '  } catch (eK) { L.kind = null; }\n';
+  // Track mattes: a matte and the layer it cuts are one mechanism, and the
+  // report showed them as two unrelated layers.
+  script += '  try {\n';
+  script += '    if (ly.trackMatteType && ly.trackMatteType !== TrackMatteType.NO_TRACK_MATTE) {\n';
+  script += '      L.matte = String(ly.trackMatteType);\n';
+  script += '      if (li > 1) { L.matteDe = comp.layer(li - 1).name; }\n';
+  script += '    }\n';
+  script += '  } catch (eM) {}\n';
   script += '  try {\n';
   script += '    var rc = ly.sourceRectAtTime(ly.inPoint, false);\n';
   script += '    L.rect = { w: Math.round(rc.width), h: Math.round(rc.height), left: Math.round(rc.left), top: Math.round(rc.top) };\n';
