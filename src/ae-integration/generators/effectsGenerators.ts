@@ -442,7 +442,8 @@ export function generateReorderEffects(params: {
   compName?: string;
   layerIndex?: number;
   layerName?: string;
-  effectIndex: number;
+  effectIndex?: number;
+  effectName?: string;
   newIndex: number;
 }): string {
   let script = '';
@@ -451,16 +452,45 @@ export function generateReorderEffects(params: {
   script += generateLayerAccess('comp', params.layerIndex, params.layerName);
 
   script += 'var effects = layer.property("Effects");\n';
-  script += 'var effect = effects(' + params.effectIndex + ');\n';
+
+  if (params.effectIndex) {
+    script += 'var effect = effects(' + params.effectIndex + ');\n';
+  } else if (params.effectName) {
+    script += 'var effect = effects.property("' + escapeString(params.effectName) + '");\n';
+  } else {
+    script += 'throw new Error("effectIndex or effectName must be provided");\n';
+    return script;
+  }
+
   script += 'if (!effect) {\n';
-  script += '  throw new Error("Effect not found at index: ' + params.effectIndex + '");\n';
+  script += '  throw new Error("Effect not found");\n';
   script += '}\n';
 
-  script += 'effect.moveTo(' + params.newIndex + ');\n';
+  // moveTo() invalidates this PropertyBase reference, so read everything we
+  // need to report BEFORE the move. Touching `effect` afterwards throws
+  // "ReferenceError: Object is invalid" and the reorder looks like it failed
+  // when in fact it succeeded. Same pattern as generateRemoveEffect above.
+  script += 'var movedName = effect.name;\n';
+  script += 'var oldIndex = effect.propertyIndex;\n';
+  script += 'var total = effects.numProperties;\n';
+
+  script += 'var target = ' + params.newIndex + ';\n';
+  script += 'if (target < 1 || target > total) {\n';
+  script += '  throw new Error("newIndex out of range: " + target + " (layer has " + total + " effects)");\n';
+  script += '}\n';
+
+  script += 'effect.moveTo(target);\n';
+
+  // Re-fetch by index to confirm the move actually landed, instead of echoing
+  // back the index we were asked for.
+  script += 'var landed = effects(target).name;\n';
 
   script += generateResultObject({
-    effectName: 'effect.name',
-    newIndex: String(params.newIndex)
+    success: 'true',
+    effectName: 'movedName',
+    previousIndex: 'oldIndex',
+    newIndex: 'target',
+    effectNowAtNewIndex: 'landed'
   });
 
   return wrapInUndoGroup(script, 'Reorder Effects');
@@ -523,10 +553,16 @@ export function generateCopyEffects(params: {
   script += '  }\n';
   script += '}\n';
 
-  script += '{\n';
-  script += '  copiedEffects: copiedEffects,\n';
-  script += '  count: copiedEffects.length\n';
-  script += '};\n';
+  // ⚠️ ESTO ESTABA ROTO PARA CUALQUIER LLAMADA. El resultado se emitia como un
+  // bloque suelto («{ copiedEffects: copiedEffects, ... };»), que en ExtendScript
+  // no es un objeto sino un bloque con etiquetas, y toda llamada moria con
+  // «SyntaxError: Expected: ;». Detectado el 19/08 al intentar copiar cuatro
+  // efectos entre dos capas. Ahora usa el mismo helper que el resto.
+  script += generateResultObject({
+    success: 'true',
+    copiedEffects: 'copiedEffects',
+    count: 'copiedEffects.length'
+  });
 
   return wrapInUndoGroup(script, 'Copy Effects');
 }

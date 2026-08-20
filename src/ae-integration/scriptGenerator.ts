@@ -44,6 +44,7 @@ export {
   generatePrecomposeLayers,
   generateReorderLayer,
   generateModifyLayer,
+  generateReplaceLayerSource,
   generateDeleteLayer,
   generateListLayers,
   generateGetLayerInfo
@@ -126,6 +127,17 @@ export {
   generateGetNearestMarker,
   generateNavigateMarkers
 } from './generators/markerGenerators.js';
+
+// Essential Graphics generators
+export {
+  generateAddToEssentialGraphics,
+  generateAddLayerToEssentialGraphics,
+  generateListEssentialGraphics,
+  generateRenameEssentialGraphicsProperty,
+  generateGetMasterProperties,
+  generateSetMasterProperty,
+  generateInspectApi
+} from './generators/essentialGraphicsGenerators.js';
 
 // Helpers (for direct use if needed)
 export {

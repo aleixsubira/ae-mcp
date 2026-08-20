@@ -476,12 +476,31 @@ const TOOLS = [
         parent: { type: 'number' },
         is3D: { type: 'boolean' },
         position: { type: 'object' },
+        anchorPoint: { type: 'array', items: { type: 'number' }, description: '[x, y] or [x, y, z]. Moving the anchor also moves any layer parented to this one.' },
+        label: { type: 'number', description: 'Layer colour swatch. 0 = none, 1-16 = the After Effects palette. Use it to colour-code by role so a long timeline reads at a glance.' },
         scale: { type: 'array', items: { type: 'number' } },
         rotation: { type: 'number' },
         opacity: { type: 'number' }
       }
     },
     generator: generators.generateModifyLayer
+  },
+  {
+    name: 'replace_layer_source',
+    description: 'Point one layer at a different source composition or footage item, keeping its effects, expressions, keyframes, parenting and track matte. Unlike replace_footage, which swaps the file behind an item for every layer using it, this changes a single layer.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        sourceItemId: { type: 'number' },
+        sourceItemName: { type: 'string' },
+        fixExpressions: { type: 'boolean', description: 'Let After Effects rewrite expression text. Default false: on a template the expressions are the specification and should not be edited behind your back.' }
+      }
+    },
+    generator: generators.generateReplaceLayerSource
   },
   {
     name: 'delete_layer',
@@ -1013,8 +1032,115 @@ const TOOLS = [
     generator: generators.generateRemoveEffect
   },
   {
+    name: 'add_to_essential_graphics',
+    description: 'Publish one property to a composition\'s Essential Graphics panel, so it becomes a Master Property on every layer that uses this composition. Give the property the same way as set_expression, e.g. "Effects/Contenido · Zoom/Slider". Naming is a separate step: call list_essential_graphics, then rename_essential_graphics_property. Measured 19/08: neither renaming by index in the same call nor addToMotionGraphicsTemplateAs applies a name.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        property: { type: 'string' }
+      },
+      required: ['property']
+    },
+    generator: generators.generateAddToEssentialGraphics
+  },
+  {
+    name: 'add_layer_to_essential_graphics',
+    description: 'Publish a LAYER as media replacement in a composition\'s Essential Graphics panel: the slot where whoever fills in the content drops their own image or video. Note: a Master Property cannot be republished upward, so publish from a layer that lives in the composition the client actually opens.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' }
+      }
+    },
+    generator: generators.generateAddLayerToEssentialGraphics
+  },
+  {
+    name: 'inspect_api',
+    description: 'Ask After Effects, through ExtendScript reflection, which methods and properties an object really exposes. Use it to settle whether an API exists instead of guessing. target: app | project | comp | layer. filter narrows the names by substring.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        target: { type: 'string', enum: ['app', 'project', 'comp', 'layer', 'property'] },
+        property: { type: 'string', description: 'Property path, when target is "property". Same form as set_expression, e.g. "Effects/Cantos · radio (px)/Slider".' },
+        filter: { type: 'string' }
+      },
+      required: ['target']
+    },
+    generator: generators.generateInspectApi
+  },
+  {
+    name: 'list_essential_graphics',
+    description: 'List the controls a composition publishes to Essential Graphics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' }
+      }
+    },
+    generator: generators.generateListEssentialGraphics
+  },
+  {
+    name: 'rename_essential_graphics_property',
+    description: 'Rename one published Essential Graphics control by its 1-based index.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        index: { type: 'number' },
+        newName: { type: 'string' }
+      },
+      required: ['index', 'newName']
+    },
+    generator: generators.generateRenameEssentialGraphicsProperty
+  },
+  {
+    name: 'get_master_properties',
+    description: 'Read the Master Properties of a precomp layer: current value, the source composition\'s value, and whether this instance overrides it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' }
+      }
+    },
+    generator: generators.generateGetMasterProperties
+  },
+  {
+    name: 'set_master_property',
+    description: 'Override one Master Property on a precomp layer.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        propertyName: { type: 'string' },
+        propertyIndex: { type: 'number' },
+        value: {}
+      },
+      required: ['value']
+    },
+    generator: generators.generateSetMasterProperty
+  },
+  {
     name: 'reorder_effects',
-    description: 'Reorder effects on a layer',
+    description: 'Move one effect to a new position in a layer\'s effect stack. Identify the effect by effectIndex or effectName; newIndex is 1-based and must be within the current number of effects.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1023,9 +1149,10 @@ const TOOLS = [
         layerIndex: { type: 'number' },
         layerName: { type: 'string' },
         effectIndex: { type: 'number' },
+        effectName: { type: 'string' },
         newIndex: { type: 'number' }
       },
-      required: ['effectIndex', 'newIndex']
+      required: ['newIndex']
     },
     generator: generators.generateReorderEffects
   },

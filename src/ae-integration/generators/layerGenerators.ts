@@ -528,6 +528,8 @@ export function generateModifyLayer(params: {
   parent?: number;
   is3D?: boolean;
   position?: { x: number; y: number; z?: number };
+  anchorPoint?: number[];
+  label?: number;
   scale?: number[];
   rotation?: number;
   opacity?: number;
@@ -580,6 +582,19 @@ export function generateModifyLayer(params: {
   if (params.position) {
     script += 'layer.property("Position").setValue(' + positionToES3(params.position) + ');\n';
   }
+  // The label is the colour swatch next to the layer name. 0 is «none», 1 to 16
+  // are After Effects' own palette. Colour-coding by role is the cheapest way to
+  // read a long timeline, so it belongs here.
+  if (params.label !== undefined) {
+    script += 'layer.label = ' + Math.max(0, Math.min(16, Math.round(params.label))) + ';\n';
+  }
+
+  // Anchor Point was missing entirely: the tool accepted the argument and threw
+  // it away, reporting success. Moving the anchor also moves everything parented
+  // to the layer, so the result echoes the value back for the caller to check.
+  if (params.anchorPoint) {
+    script += 'layer.property("Anchor Point").setValue(' + arrayToES3(params.anchorPoint) + ');\n';
+  }
   if (params.scale) {
     script += 'layer.property("Scale").setValue(' + arrayToES3(params.scale) + ');\n';
   }
@@ -592,10 +607,74 @@ export function generateModifyLayer(params: {
 
   script += generateResultObject({
     index: 'layer.index',
-    name: 'layer.name'
+    name: 'layer.name',
+    anchorPoint: 'layer.property("Anchor Point").value',
+    position: 'layer.property("Position").value'
   });
 
   return wrapInUndoGroup(script, 'Modify Layer');
+}
+
+/**
+ * Point a layer at a different source, keeping the layer itself: its effects,
+ * expressions, keyframes, parenting, track matte and in/out points all survive.
+ *
+ * Different from replace_footage, and the difference matters: replace_footage
+ * swaps the FILE behind a footage item, so every layer using that item changes
+ * at once. This swaps the SOURCE of one layer, leaving every other user of the
+ * old source alone.
+ *
+ * `fixExpressions` defaults to false. After Effects will rewrite expression text
+ * when asked to fix it, and rewriting is exactly what you do not want on a
+ * template whose expressions are the specification.
+ */
+export function generateReplaceLayerSource(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  sourceItemId?: number;
+  sourceItemName?: string;
+  fixExpressions?: boolean;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+
+  if (params.sourceItemId) {
+    script += 'var src = app.project.itemByID(' + params.sourceItemId + ');\n';
+  } else if (params.sourceItemName) {
+    script += 'var src = null;\n';
+    script += 'for (var i = 1; i <= app.project.numItems; i++) {\n';
+    script += '  if (app.project.item(i).name === "' + escapeString(params.sourceItemName) + '") {\n';
+    script += '    src = app.project.item(i);\n';
+    script += '    break;\n';
+    script += '  }\n';
+    script += '}\n';
+  } else {
+    script += 'throw new Error("sourceItemId or sourceItemName must be provided");\n';
+    return script;
+  }
+
+  script += 'if (!src) {\n';
+  script += '  throw new Error("Source item not found");\n';
+  script += '}\n';
+  script += 'if (typeof layer.replaceSource !== "function") {\n';
+  script += '  throw new Error("This layer has no replaceable source (it is not an AV layer).");\n';
+  script += '}\n';
+
+  script += 'var previous = layer.source ? layer.source.name : null;\n';
+  script += 'layer.replaceSource(src, ' + (params.fixExpressions ? 'true' : 'false') + ');\n';
+
+  script += generateResultObject({
+    success: 'true',
+    layer: 'layer.name',
+    previousSource: 'previous',
+    source: 'layer.source ? layer.source.name : null'
+  });
+
+  return wrapInUndoGroup(script, 'Replace Layer Source');
 }
 
 /**
