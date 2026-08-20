@@ -350,6 +350,18 @@ export function generateGetCompReport(params: {
   script += 'report.comp = { id: comp.id, name: comp.name, width: comp.width, height: comp.height, duration: __r2(comp.duration), frameRate: __r2(comp.frameRate), numLayers: comp.numLayers };\n';
 
   // -- markers --
+  // EL PANEL DE ESSENTIAL GRAPHICS, que es lo que ve quien rellena la plantilla.
+  // Es la cara publica de un master y no estaba en el informe: se leia la
+  // maquinaria y no el producto.
+  script += 'report.essentialGraphics = { templateName: null, controllers: [] };\n';
+  script += 'try {\n';
+  script += '  report.essentialGraphics.templateName = comp.motionGraphicsTemplateName;\n';
+  script += '  var egn = comp.motionGraphicsTemplateControllerCount;\n';
+  script += '  for (var ei = 1; ei <= egn; ei++) {\n';
+  script += '    report.essentialGraphics.controllers.push({ index: ei, name: comp.getMotionGraphicsTemplateControllerName(ei) });\n';
+  script += '  }\n';
+  script += '} catch (eEG) {}\n';
+
   script += 'report.markers = [];\n';
   script += 'try {\n';
   script += '  var mk = comp.markerProperty;\n';
@@ -474,6 +486,46 @@ export function generateGetCompReport(params: {
   script += '  if (ly.matchName === "ADBE Camera Layer") {\n';
   script += '    try { L.zoom = __r2(ly.property("Camera Options").property("Zoom").value); } catch (eZ) {}\n';
   script += '  }\n';
+  // LOS EFECTOS DE LA CAPA, con su valor y sus opciones si es un desplegable.
+  //
+  // Sin esto el informe solo trae las propiedades ANIMADAS o con expresion, asi
+  // que un panel de mandos entero (deslizadores y casillas quietos) era
+  // invisible. Quien queria leer el panel de una plantilla tenia que mantener un
+  // volcado aparte a mano, y el 20/08 ese volcado llevaba dias desfasado y hacia
+  // que las fichas listaran mandos que ya no existian.
+  script += '  var fx = [];\n';
+  script += '  try {\n';
+  script += '    var fxg = ly.property("Effects");\n';
+  script += '    if (fxg) {\n';
+  script += '      for (var fi = 1; fi <= fxg.numProperties; fi++) {\n';
+  script += '        var ef = fxg.property(fi);\n';
+  script += '        var E = { index: fi, name: ef.name, matchName: ef.matchName, enabled: ef.enabled };\n';
+  script += '        try {\n';
+  script += '          var p1 = ef.property(1);\n';
+  script += '          if (p1) {\n';
+  script += '            E.control = p1.name;\n';
+  script += '            var v1 = p1.value;\n';
+  script += '            if (v1 instanceof Array) { E.value = __vec(v1); }\n';
+  script += '            else if (typeof v1 === "number") { E.value = __r2(v1); }\n';
+  script += '            else if (typeof v1 === "boolean" || typeof v1 === "string") { E.value = v1; }\n';
+  script += '          }\n';
+  script += '        } catch (eV) {}\n';
+  // Un desplegable guarda sus opciones en propertyParameters. Sin ellas el mando
+  // dice «3» y no dice de que.
+  script += '        try {\n';
+  script += '          var pp2 = ef.property(1).propertyParameters;\n';
+  script += '          if (pp2 && pp2.length) {\n';
+  script += '            var opts = [];\n';
+  script += '            for (var oi = 0; oi < pp2.length; oi++) { opts.push(String(pp2[oi])); }\n';
+  script += '            E.options = opts;\n';
+  script += '          }\n';
+  script += '        } catch (eO2) {}\n';
+  script += '        fx.push(E);\n';
+  script += '      }\n';
+  script += '    }\n';
+  script += '  } catch (eFx) {}\n';
+  script += '  if (fx.length > 0) { L.effects = fx; }\n';
+
   script += '  var animated = [];\n';
   script += '  __walk(ly, "", animated, 0);\n';
   script += '  if (animated.length > 0) { L.animatedProps = animated; }\n';
