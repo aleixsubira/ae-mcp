@@ -20,23 +20,43 @@ output file and sanitizes the filename, the font check handles AE 24+ nested
 `allFonts`, and `set_keyframe` accepts `{x,y,z}` objects. Those four fixes are
 merged back into this fork as of 19 Aug 2026, so the two sides do not drift.
 
-### Not sent yet, and they should be
+### Five upstream bugs this fork is holding
 
 These are bugs in the ORIGINAL project's own code, not consequences of anything
 this fork does. They are listed apart from the tools below on purpose: a tool we
 built for our own work has no business in someone else's repo, but a bug that
 breaks their code for everyone does.
 
-| Where | What breaks | Verified |
-|---|---|---|
-| `wrapInUndoGroup` | The value of an `eval()` is its last statement, and the helper ends on `app.endUndoGroup()`. So **every tool wrapped in an undo group returns `undefined` instead of its result object**. There are **53 call sites across 10 generator files**: this is the widest of the five | counted on `upstream/main` |
-| `copy_effects` | Emits its result as a bare labelled block (`{ copiedEffects: copiedEffects, ... };`), which is not an object literal in ExtendScript. **Every call dies with `SyntaxError: Expected: ;`** | read on `upstream/main`, hit on 19 Aug 2026 copying four effects between two layers |
-| `reorder_effects` | `moveTo()` invalidates the `PropertyBase`, and the next line reads `effect.name` to build the result. The reorder happens; **reporting it throws `Object is invalid`**, so a successful call looks failed | read on `upstream/main` |
-| `render_frame` | `saveFrameToPng` rasterises at the comp's **preview** resolution. A comp left at Half or Quarter returns a downsampled frame and says nothing, so any pixel comparison against it is worthless. Also `File.exists` caches and can report a freshly written frame as missing | one comp in a live project is saved at Quarter |
-| `get_comp_report` | `matteDe` reads the layer **above** instead of `layer.trackMatteLayer`. Since AE 24 the matte is chosen, not inherited, so the guess is wrong whenever anyone uses that freedom | three false readings in a live project |
+They are fixed here and working. Nothing in our own work is waiting on them.
+
+| Where | What breaks | Verified | Lives in |
+|---|---|---|---|
+| `wrapInUndoGroup` | The value of an `eval()` is its last statement, and the helper ends on `app.endUndoGroup()`. So **every tool wrapped in an undo group returns `undefined` instead of its result object**. There are **53 call sites across 10 generator files**: this is the widest of the five | counted on `upstream/main` | `69d1a3c` ⚠️ buried in an unrelated dropdown commit since v1.2 |
+| `copy_effects` | Emits its result as a bare labelled block (`{ copiedEffects: copiedEffects, ... };`), which is not an object literal in ExtendScript. **Every call dies with `SyntaxError: Expected: ;`** | read on `upstream/main`, hit on 19 Aug 2026 copying four effects between two layers | `4a48e9f`, mixed with 8 new tools |
+| `reorder_effects` | `moveTo()` invalidates the `PropertyBase`, and the next line reads `effect.name` to build the result. The reorder happens; **reporting it throws `Object is invalid`**, so a successful call looks failed | read on `upstream/main` | `4a48e9f`, mixed with 8 new tools |
+| `render_frame` | `saveFrameToPng` rasterises at the comp's **preview** resolution. A comp left at Half or Quarter returns a downsampled frame and says nothing, so any pixel comparison against it is worthless. Also `File.exists` caches and can report a freshly written frame as missing | one comp in a live project is saved at Quarter | `4175f70` ✅ that commit is only these two |
+| `get_comp_report` | `matteDe` reads the layer **above** instead of `layer.trackMatteLayer`. Since AE 24 the matte is chosen, not inherited, so the guess is wrong whenever anyone uses that freedom | three false readings in a live project | `4175f70` ✅ that commit is only these two |
 
 The last two are fixes to tools this fork contributed in PR #2, so they are ours
 to correct.
+
+**Why none of them has been sent, decided 24 Aug 2026.** PR #3 has been open
+since 19 Aug with zero comments and zero reviews, so the cost of preparing a
+pull request here is real and the odds of it landing are unknown. Meanwhile the
+fixes work in this fork and no client work is blocked by them. The reason to
+send them at all is drift, not altruism: this fork has already had to merge
+`upstream/main` once (`ba56c55`), and every fix that stays here is one more
+patch sitting on top of files the maintainer also edits.
+
+**If it gets picked up again, send ONE and wait.** `wrapInUndoGroup` first: it
+is the widest (53 call sites), the easiest to argue, and the smallest to read.
+Its fix is four lines. Extracting it means lifting those four lines out of
+`69d1a3c` into a clean branch off `fork/main`, because that commit is about
+something else entirely. `4175f70` is the only one that could go almost as-is.
+
+⚠️ **PRs go out from the `fork` remote** (`aleixsubira/after-effects-mcp`), never
+from `origin`. `fork/main` was brought level with `upstream/main` on 24 Aug 2026,
+so a branch cut from it starts clean.
 
 ## What this fork adds (v1.4.0-ff, Aug 2026)
 
