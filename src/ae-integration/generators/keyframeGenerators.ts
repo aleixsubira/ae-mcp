@@ -560,6 +560,85 @@ export function generateGetKeyframes(params: {
  * had at `keepValueAt` (default: the first key), so removing an animation does
  * not also move the layer.
  */
+/**
+ * Read the CONTENT of every keyframe of a Source Text property.
+ *
+ * `get_keyframes` cannot do this. Its `prop.keyValue(i)` hands back a whole
+ * TextDocument, and reading one blows up with «Text document not of Box
+ * document type»: several of its fields exist only on box text, and touching
+ * them on point text throws. The generic report has the same problem and
+ * returns `null` for the values.
+ *
+ * The consequence is worse than a missing feature: there is no way to answer
+ * "does the text CHANGE between these keyframes", so a master with animated
+ * copy has to be diagnosed by rendering frames and looking at them. That is how
+ * it was done on 24 Aug 2026 for M04_Productos_AW, and it only worked because
+ * the layer had two keyframes.
+ *
+ * So this reduces each TextDocument to fields that are safe to serialise, each
+ * one guarded on its own: a field that throws is reported absent instead of
+ * killing the whole call.
+ */
+export function generateGetTextKeyframes(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  property?: string;
+}): string {
+  const prop = params.property || 'Source Text';
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+  script += generatePropertyAccess('layer', prop);
+
+  // One guarded read per field. `boxText` fields throw on point text, which is
+  // the whole reason the generic reader fails.
+  script += 'function leerDoc(d) {\n';
+  script += '  var o = {};\n';
+  script += '  try { o.text = d.text; } catch (e) { o.text = null; }\n';
+  script += '  try { o.font = d.font; } catch (e) {}\n';
+  script += '  try { o.fontSize = d.fontSize; } catch (e) {}\n';
+  script += '  try { o.tracking = d.tracking; } catch (e) {}\n';
+  script += '  try { o.leading = d.leading; } catch (e) {}\n';
+  script += '  try { o.autoLeading = d.autoLeading; } catch (e) {}\n';
+  script += '  try { o.justification = d.justification.toString(); } catch (e) {}\n';
+  script += '  try { o.boxText = d.boxText; } catch (e) { o.boxText = false; }\n';
+  script += '  return o;\n';
+  script += '}\n';
+
+  script += 'var keyframes = [];\n';
+  script += 'for (var i = 1; i <= prop.numKeys; i++) {\n';
+  script += '  var kf = { index: i };\n';
+  script += '  try { kf.time = prop.keyTime(i); } catch (e) { kf.time = null; }\n';
+  script += '  try { kf.doc = leerDoc(prop.keyValue(i)); } catch (e) { kf.doc = null; kf.error = e.toString(); }\n';
+  script += '  keyframes.push(kf);\n';
+  script += '}\n';
+
+  // Sin claves, el valor estatico. Una capa de texto sin animar tambien tiene
+  // contenido, y preguntar por el no deberia devolver una lista vacia.
+  script += 'var estatico = null;\n';
+  script += 'if (prop.numKeys === 0) { try { estatico = leerDoc(prop.value); } catch (e) { estatico = null; } }\n';
+
+  // Lo que se viene a preguntar: ¿cambia el texto entre claves?
+  script += 'var cambia = false;\n';
+  script += 'for (var j = 1; j < keyframes.length; j++) {\n';
+  script += '  var a = keyframes[j-1].doc, b = keyframes[j].doc;\n';
+  script += '  if (a && b && a.text !== b.text) { cambia = true; break; }\n';
+  script += '}\n';
+
+  script += generateResultObject({
+    property: '"' + escapeString(prop) + '"',
+    numKeys: 'prop.numKeys',
+    textChangesBetweenKeys: 'cambia',
+    keyframes: 'keyframes',
+    staticValue: 'estatico'
+  });
+
+  return script;
+}
+
 export function generateRemoveKeyframes(params: {
   compId?: number;
   compName?: string;

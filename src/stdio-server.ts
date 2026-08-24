@@ -746,6 +746,21 @@ const TOOLS = [
     generator: generators.generateGetKeyframes
   },
   {
+    name: 'get_text_keyframes',
+    description: 'Read the CONTENT of every keyframe of a Source Text property, plus whether the text actually changes between them. `get_keyframes` cannot: its keyValue() hands back a whole TextDocument and reading one throws "Text document not of Box document type", because several fields exist only on box text. Without this there is no way to answer "does the copy change over time" except by rendering frames and looking at them.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        property: { type: 'string', description: 'Defaults to "Source Text".' }
+      }
+    },
+    generator: generators.generateGetTextKeyframes
+  },
+  {
     name: 'remove_keyframes',
     description: 'Remove keyframes from a property. Without `times` it strips every key and leaves the property holding the value it had, so undoing an inherited animation does not also move the layer. The alternative was an expression returning a constant, which hides the animation instead of removing it and leaves the timeline lying about what the layer does.',
     inputSchema: {

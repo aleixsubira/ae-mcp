@@ -59,6 +59,7 @@ export {
   generateOffsetKeyframes,
   generateScaleKeyframeTiming,
   generateReverseKeyframes,
+  generateGetTextKeyframes,
   generateRemoveKeyframes,
   generateCopyKeyframes,
   generateGetKeyframes
