@@ -293,8 +293,25 @@ export function generateRenderFrame(params: {
   script += 'if (!comp.saveFrameToPng) {\n';
   script += '  throw new Error("saveFrameToPng is not available in this After Effects version");\n';
   script += '}\n';
-  script += 'comp.saveFrameToPng(t, outFile);\n';
-  script += 'if (!outFile.exists) {\n';
+  // saveFrameToPng rasterises at the comp's current preview resolution, so a
+  // comp left at Half or Quarter silently returns a downsampled frame and every
+  // pixel comparison made against it is worthless. Force full resolution for the
+  // render and put the user's setting back afterwards.
+  script += 'var prevRes = comp.resolutionFactor;\n';
+  script += 'var resForced = false;\n';
+  script += 'try { comp.resolutionFactor = [1, 1]; resForced = true; } catch (eRF) {}\n';
+  script += 'try {\n';
+  script += '  comp.saveFrameToPng(t, outFile);\n';
+  script += '} finally {\n';
+  script += '  if (resForced) { try { comp.resolutionFactor = prevRes; } catch (eRR) {} }\n';
+  script += '}\n';
+  // File.exists caches, and on a fresh write it can answer false while the frame
+  // is already on disk. Re-instantiate the File before believing the answer, and
+  // give the write a moment: reporting a good render as a failure is worse than
+  // waiting 200 ms.
+  script += 'var check = new File(outFile.fsName);\n';
+  script += 'for (var w = 0; w < 10 && !check.exists; w++) { $.sleep(20); check = new File(outFile.fsName); }\n';
+  script += 'if (!check.exists) {\n';
   script += '  throw new Error("Frame render did not produce a file: " + outFile.fsName);\n';
   script += '}\n';
 
@@ -456,7 +473,13 @@ export function generateGetCompReport(params: {
   script += '  try {\n';
   script += '    if (ly.trackMatteType && ly.trackMatteType !== TrackMatteType.NO_TRACK_MATTE) {\n';
   script += '      L.matte = String(ly.trackMatteType);\n';
-  script += '      if (li > 1) { L.matteDe = comp.layer(li - 1).name; }\n';
+  // Since AE 24 the matte can be any layer, not just the one above. Report the
+  // real one; the layer above is a guess and reading it as fact sends you
+  // rebuilding the wrong layer.
+  script += '      var mtl = null;\n';
+  script += '      try { mtl = ly.trackMatteLayer; } catch (eTL) { mtl = null; }\n';
+  script += '      if (mtl) { L.matteDe = mtl.name; L.matteDeIndex = mtl.index; }\n';
+  script += '      else if (li > 1) { L.matteDe = comp.layer(li - 1).name; L.matteDeSupuesto = true; }\n';
   script += '    }\n';
   script += '  } catch (eM) {}\n';
   script += '  try {\n';
