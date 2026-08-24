@@ -59,6 +59,7 @@ export {
   generateOffsetKeyframes,
   generateScaleKeyframeTiming,
   generateReverseKeyframes,
+  generateRemoveKeyframes,
   generateCopyKeyframes,
   generateGetKeyframes
 } from './generators/keyframeGenerators.js';
@@ -106,6 +107,7 @@ export {
   generateReplaceFootage,
   generateOrganizeProjectItems,
   generateListProjectFolders,
+  generateAuditProject,
   generateMoveProjectItem,
   generateFindMissingFootage,
   generateCollectFiles,

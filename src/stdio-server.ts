@@ -744,6 +744,24 @@ const TOOLS = [
     },
     generator: generators.generateGetKeyframes
   },
+  {
+    name: 'remove_keyframes',
+    description: 'Remove keyframes from a property. Without `times` it strips every key and leaves the property holding the value it had, so undoing an inherited animation does not also move the layer. The alternative was an expression returning a constant, which hides the animation instead of removing it and leaves the timeline lying about what the layer does.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        property: { type: 'string' },
+        times: { type: 'array', items: { type: 'number' }, description: 'Times in seconds of the keys to remove. Matches the nearest key within half a frame. Omit to remove all of them.' },
+        keepValueAt: { type: 'number', description: 'When removing all keys, the time whose value the property keeps. Defaults to the first key.' }
+      },
+      required: ['property']
+    },
+    generator: generators.generateRemoveKeyframes
+  },
 
   // ============================================
   // EXPRESSION TOOLS
@@ -1324,6 +1342,18 @@ const TOOLS = [
     description: 'List the project folder tree: id, name, full path and item count. Only folders, so a large project stays readable. Use it before move_project_item.',
     inputSchema: { type: 'object', properties: {} },
     generator: generators.generateListProjectFolders
+  },
+  {
+    name: 'audit_project',
+    description: 'Audit the project against one root folder before anyone deletes anything. Walks every composition\'s layers, follows precomps, and returns three lists: items in use and already inside the root folder, items IN USE but living outside it (these must be moved in, never deleted), and items nothing references (the only safe candidates to delete). Reports the full folder path of each item, which no other tool exposes. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        rootFolder: { type: 'string', description: 'Folder that should contain the work. Default "0_FAILFAST".' },
+        rootComps: { type: 'array', items: { type: 'string' }, description: 'Compositions to treat as the roots of the dependency walk. Omit to use every composition inside rootFolder.' }
+      }
+    },
+    generator: generators.generateAuditProject
   },
   {
     name: 'move_project_item',

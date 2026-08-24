@@ -474,3 +474,103 @@ export function generateMoveProjectItem(params: {
 
   return wrapInUndoGroup(script, 'Move Project Item');
 }
+
+/**
+ * Audit the project against one root folder.
+ *
+ * Answers the question you have to answer before deleting anything: what does
+ * the work actually depend on, where does each piece live, and what is nobody
+ * using. The report walks every composition's layers, follows precomps, and
+ * classifies every item in the project.
+ *
+ * Nothing is deleted or moved. It only looks.
+ */
+export function generateAuditProject(params: {
+  rootFolder?: string;
+  rootComps?: string[];
+}): string {
+  const root = params.rootFolder || '0_FAILFAST';
+
+  let script = '';
+  script += generateProjectCheck();
+
+  script += 'var RAIZ = "' + escapeString(root) + '";\n';
+
+  // Full path of every item, so "inside the root folder" is a fact and not a guess.
+  script += 'function rutaDe(it) {\n';
+  script += '  var partes = [];\n';
+  script += '  var p = it.parentFolder;\n';
+  script += '  while (p && p !== app.project.rootFolder) { partes.unshift(p.name); p = p.parentFolder; }\n';
+  script += '  return partes.join(" / ");\n';
+  script += '}\n';
+
+  script += 'var porId = {};\n';
+  script += 'var todos = [];\n';
+  script += 'for (var i = 1; i <= app.project.numItems; i++) {\n';
+  script += '  var it = app.project.item(i);\n';
+  script += '  if (it instanceof FolderItem) continue;\n';
+  script += '  var ruta = rutaDe(it);\n';
+  script += '  var reg = { id: it.id, nombre: it.name, ruta: ruta,\n';
+  script += '              tipo: (it instanceof CompItem) ? "comp" : "material",\n';
+  script += '              dentro: (ruta === RAIZ || ruta.indexOf(RAIZ + " / ") === 0) };\n';
+  script += '  porId[it.id] = reg;\n';
+  script += '  todos.push(reg);\n';
+  script += '}\n';
+
+  // What each comp uses. Layer sources only: that is what breaks if you delete it.
+  script += 'var usa = {};\n';
+  script += 'for (var c = 1; c <= app.project.numItems; c++) {\n';
+  script += '  var cm = app.project.item(c);\n';
+  script += '  if (!(cm instanceof CompItem)) continue;\n';
+  script += '  var lista = [];\n';
+  script += '  for (var L = 1; L <= cm.numLayers; L++) {\n';
+  script += '    try { var src = cm.layer(L).source; if (src) lista.push(src.id); } catch (eL) {}\n';
+  script += '  }\n';
+  script += '  usa[cm.id] = lista;\n';
+  script += '}\n';
+
+  // Roots: the named comps, or every comp living inside the root folder.
+  script += 'var cola = [];\n';
+  if (params.rootComps && params.rootComps.length) {
+    script += 'var nombres = ' + JSON.stringify(params.rootComps) + ';\n';
+    script += 'for (var n = 0; n < nombres.length; n++) {\n';
+    script += '  for (var t = 0; t < todos.length; t++) {\n';
+    script += '    if (todos[t].nombre === nombres[n] && todos[t].tipo === "comp") { cola.push(todos[t].id); break; }\n';
+    script += '  }\n';
+    script += '}\n';
+  } else {
+    script += 'for (var t = 0; t < todos.length; t++) {\n';
+    script += '  if (todos[t].tipo === "comp" && todos[t].dentro) cola.push(todos[t].id);\n';
+    script += '}\n';
+  }
+  script += 'var raices = cola.length;\n';
+
+  script += 'var visto = {};\n';
+  script += 'while (cola.length) {\n';
+  script += '  var id = cola.pop();\n';
+  script += '  if (visto[id]) continue;\n';
+  script += '  visto[id] = true;\n';
+  script += '  var hijos = usa[id];\n';
+  script += '  if (hijos) { for (var h = 0; h < hijos.length; h++) if (!visto[hijos[h]]) cola.push(hijos[h]); }\n';
+  script += '}\n';
+
+  script += 'var fuera = [];\n';   // used, but living outside the root folder
+  script += 'var sobra = [];\n';   // reachable from nothing
+  script += 'var dentroOk = 0;\n';
+  script += 'for (var t2 = 0; t2 < todos.length; t2++) {\n';
+  script += '  var r = todos[t2];\n';
+  script += '  if (visto[r.id]) { if (r.dentro) { dentroOk++; } else { fuera.push(r); } }\n';
+  script += '  else { sobra.push(r); }\n';
+  script += '}\n';
+
+  script += 'var result = {};\n';
+  script += 'result.raiz = RAIZ;\n';
+  script += 'result.compsRaiz = raices;\n';
+  script += 'result.total = todos.length;\n';
+  script += 'result.enUsoYDentro = dentroOk;\n';
+  script += 'result.enUsoPeroFuera = fuera;\n';
+  script += 'result.sinUsar = sobra;\n';
+  script += 'result;\n';
+
+  return script;
+}

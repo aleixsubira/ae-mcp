@@ -547,3 +547,63 @@ export function generateGetKeyframes(params: {
 
   return script;
 }
+
+/**
+ * Remove keyframes from a property.
+ *
+ * The MCP could create keyframes and not delete them, so the only way to undo an
+ * inherited animation was an expression that returns a constant: the keys stay
+ * underneath and whoever opens the timeline sees an animation that does not
+ * happen. This closes that hole.
+ *
+ * Without `times`, every key goes and the property is left holding the value it
+ * had at `keepValueAt` (default: the first key), so removing an animation does
+ * not also move the layer.
+ */
+export function generateRemoveKeyframes(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  property: string;
+  times?: number[];
+  keepValueAt?: number;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+  script += generatePropertyAccess('layer', params.property);
+
+  script += 'var antes = prop.numKeys;\n';
+  script += 'if (antes === 0) { throw new Error("Property has no keyframes: ' + escapeString(params.property) + '"); }\n';
+
+  if (params.times && params.times.length) {
+    // Remove only the named times, nearest key within half a frame.
+    script += 'var objetivos = ' + JSON.stringify(params.times) + ';\n';
+    script += 'var tol = 1 / (2 * comp.frameRate);\n';
+    script += 'var quitados = [];\n';
+    script += 'for (var t = 0; t < objetivos.length; t++) {\n';
+    script += '  for (var i = prop.numKeys; i >= 1; i--) {\n';
+    script += '    if (Math.abs(prop.keyTime(i) - objetivos[t]) <= tol) { quitados.push(prop.keyTime(i)); prop.removeKey(i); break; }\n';
+    script += '  }\n';
+    script += '}\n';
+  } else {
+    // Freeze the value first, then strip every key, so the property does not
+    // fall back to whatever static value was under the animation.
+    const at = params.keepValueAt;
+    script += 'var congelado = ' + (at !== undefined ? 'prop.valueAtTime(' + at + ', false)' : 'prop.keyValue(1)') + ';\n';
+    script += 'var quitados = [];\n';
+    script += 'for (var i = prop.numKeys; i >= 1; i--) { quitados.push(prop.keyTime(i)); prop.removeKey(i); }\n';
+    script += 'try { prop.setValue(congelado); } catch (eSV) {}\n';
+  }
+
+  script += 'var result = {};\n';
+  script += 'result.property = "' + escapeString(params.property) + '";\n';
+  script += 'result.keyframesAntes = antes;\n';
+  script += 'result.keyframesAhora = prop.numKeys;\n';
+  script += 'result.quitados = quitados;\n';
+  script += 'result;\n';
+
+  return script;
+}
