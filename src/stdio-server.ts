@@ -467,6 +467,7 @@ const TOOLS = [
         enabled: { type: 'boolean' },
         solo: { type: 'boolean' },
         shy: { type: 'boolean' },
+        guideLayer: { type: 'boolean', description: 'Mark as guide layer: visible in the viewer, excluded from the render (Render Settings default is "Guide Layers: All Off").' },
         locked: { type: 'boolean' },
         inPoint: { type: 'number' },
         outPoint: { type: 'number' },

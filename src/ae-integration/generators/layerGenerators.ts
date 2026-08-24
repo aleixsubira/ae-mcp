@@ -519,6 +519,7 @@ export function generateModifyLayer(params: {
   enabled?: boolean;
   solo?: boolean;
   shy?: boolean;
+  guideLayer?: boolean;
   locked?: boolean;
   inPoint?: number;
   outPoint?: number;
@@ -547,6 +548,13 @@ export function generateModifyLayer(params: {
   }
   if (params.solo !== undefined) {
     script += 'layer.solo = ' + params.solo + ';\n';
+  }
+  // A guide layer shows in the viewer and is EXCLUDED from the render: the
+  // Render Settings default is "Guide Layers: All Off", and aerender prints it.
+  // It is the right home for anything that must be seen while working and must
+  // never reach the delivered file, such as an overflow warning.
+  if (params.guideLayer !== undefined) {
+    script += 'layer.guideLayer = ' + params.guideLayer + ';\n';
   }
   if (params.shy !== undefined) {
     script += 'layer.shy = ' + params.shy + ';\n';
