@@ -536,6 +536,20 @@ export function generateGetKeyframes(params: {
   script += '  kf.value = prop.keyValue(i);\n';
   script += '  kf.inInterpolation = prop.keyInInterpolationType(i).toString();\n';
   script += '  kf.outInterpolation = prop.keyOutInterpolationType(i).toString();\n';
+  // The interpolation TYPE says bezier or linear; it does not say how much
+  // curve. Two masters can both report 6613 and move completely differently.
+  // Without the ease there is no way to check that a curve matches the house
+  // standard, so "it has a curve" is as far as a review can get.
+  // Easy Ease is influence 33.333 with speed 0; a linear key reports influence
+  // 16.667. Arrays because a multidimensional property has one per component.
+  script += '  try {\n';
+  script += '    var ei = prop.keyInTemporalEase(i), eo = prop.keyOutTemporalEase(i);\n';
+  script += '    var fi = [], fo = [], si = [], so = [];\n';
+  script += '    for (var e = 0; e < ei.length; e++) { fi.push(ei[e].influence); si.push(ei[e].speed); }\n';
+  script += '    for (var g = 0; g < eo.length; g++) { fo.push(eo[g].influence); so.push(eo[g].speed); }\n';
+  script += '    kf.inInfluence = fi; kf.inSpeed = si;\n';
+  script += '    kf.outInfluence = fo; kf.outSpeed = so;\n';
+  script += '  } catch (eE) { kf.easeError = eE.toString(); }\n';
   script += '  keyframes.push(kf);\n';
   script += '}\n';
 
