@@ -20,6 +20,50 @@ output file and sanitizes the filename, the font check handles AE 24+ nested
 `allFonts`, and `set_keyframe` accepts `{x,y,z}` objects. Those four fixes are
 merged back into this fork as of 19 Aug 2026, so the two sides do not drift.
 
+### Not sent yet, and they should be
+
+These are bugs in the ORIGINAL project's own code, not consequences of anything
+this fork does. They are listed apart from the tools below on purpose: a tool we
+built for our own work has no business in someone else's repo, but a bug that
+breaks their code for everyone does.
+
+| Where | What breaks | Verified |
+|---|---|---|
+| `wrapInUndoGroup` | The value of an `eval()` is its last statement, and the helper ends on `app.endUndoGroup()`. So **every tool wrapped in an undo group returns `undefined` instead of its result object**. There are **53 call sites across 10 generator files**: this is the widest of the five | counted on `upstream/main` |
+| `copy_effects` | Emits its result as a bare labelled block (`{ copiedEffects: copiedEffects, ... };`), which is not an object literal in ExtendScript. **Every call dies with `SyntaxError: Expected: ;`** | read on `upstream/main`, hit on 19 Aug 2026 copying four effects between two layers |
+| `reorder_effects` | `moveTo()` invalidates the `PropertyBase`, and the next line reads `effect.name` to build the result. The reorder happens; **reporting it throws `Object is invalid`**, so a successful call looks failed | read on `upstream/main` |
+| `render_frame` | `saveFrameToPng` rasterises at the comp's **preview** resolution. A comp left at Half or Quarter returns a downsampled frame and says nothing, so any pixel comparison against it is worthless. Also `File.exists` caches and can report a freshly written frame as missing | one comp in a live project is saved at Quarter |
+| `get_comp_report` | `matteDe` reads the layer **above** instead of `layer.trackMatteLayer`. Since AE 24 the matte is chosen, not inherited, so the guess is wrong whenever anyone uses that freedom | three false readings in a live project |
+
+The last two are fixes to tools this fork contributed in PR #2, so they are ours
+to correct.
+
+## What this fork adds (v1.4.0-ff, Aug 2026)
+
+Essential Graphics was unreachable, so a template's client-facing panel had to be
+built by hand, comp by comp. And the comp report said what a layer was called but
+not what it *is*, which is the thing you need to read a 30-layer master.
+
+| Type | Change |
+|------|--------|
+| ✨ New | **`add_to_essential_graphics`**: publish a property to the panel |
+| ✨ New | **`add_layer_to_essential_graphics`**: publish a layer as media replacement |
+| ✨ New | **`list_essential_graphics`**: read the settled order of the panel |
+| ✨ New | **`rename_essential_graphics_property`**: rename a published row. ⚠️ Publishing and naming cannot be done in one call: both routes were tried and both fail |
+| ✨ New | **`get_master_properties` / `set_master_property`**: read and write per-instance overrides, with `sourceValue` |
+| ✨ New | **`replace_layer_source`**: point ONE layer at another source, keeping its effects, expressions, keyframes and track matte. `replace_footage` swaps the file for every layer using it |
+| ✨ New | **`inspect_api`**: ask After Effects, through ExtendScript reflection, what an object really exposes. Settles "does this API exist" instead of guessing |
+| ✨ New | **`remove_keyframes`**: the server could create keys and not delete them, so undoing an inherited animation was done with an expression returning a constant. The keys stayed underneath and the timeline lied about what the layer does |
+| ✨ New | **`audit_project`**: the three lists you need before deleting anything: in use and inside the root folder, **in use but living outside it** (move, never delete), and referenced by nobody. Reports each item's full folder path, which nothing else exposes. Read-only |
+| 📈 Better | `get_comp_report` / `dump_comp_report`: what each layer IS and what it CONTAINS, the three switches that decide what a person actually sees, the effects on every layer, and the Essential Graphics panel |
+| 📈 Better | `modify_layer` takes `anchorPoint` and `label` |
+| 🐛 Fix | `get_master_properties`: a `TextDocument` value blew up the JSON pass with "Text document not of Box document type". Values are reduced to something serialisable before they leave |
+| 🐛 Fix | the five upstream bugs listed above, four of which reported success while doing nothing |
+
+**Why it matters**: with the panel reachable and the report honest, a master can
+be checked without opening After Effects, and the check is a number rather than
+an opinion.
+
 ## What this fork adds (v1.3.0-ff, Aug 2026)
 
 | Type | Change |
