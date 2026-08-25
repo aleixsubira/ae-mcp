@@ -494,6 +494,10 @@ export function generateGetCompReport(params: {
   script += '  try { L.shy = ly.shy; } catch (eS) {}\n';
   script += '  try { L.solo = ly.solo; } catch (eSo) {}\n';
   script += '  try { L.locked = ly.locked; } catch (eL) {}\n';
+  // guideLayer: whether the render leaves this layer out. Without it a report
+  // cannot tell an on-screen warning from one that only the person filling the
+  // template ever sees, and that is the whole point of the warning layers.
+  script += '  try { L.guideLayer = ly.guideLayer; } catch (eG) {}\n';
   script += '  try { L.parent = ly.parent ? ly.parent.name : null; } catch (eP) {}\n';
   // What the layer IS and what it CONTAINS. Without these the report is flat:
   // a precomposition looks like any other layer, so nothing downstream can walk
