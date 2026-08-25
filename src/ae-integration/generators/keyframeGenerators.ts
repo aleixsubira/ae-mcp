@@ -557,6 +557,14 @@ export function generateGetKeyframes(params: {
   script += 'result.property = "' + escapeString(params.property) + '";\n';
   script += 'result.numKeys = prop.numKeys;\n';
   script += 'result.keyframes = keyframes;\n';
+
+  // El VALOR de la propiedad, tenga claves o no. Sin esto no habia forma de leer
+  // lo que vale una propiedad estatica: el informe solo trae las animadas, y una
+  // rampa de degradado, un relleno o un radio quietos quedaban fuera de alcance.
+  // Con `value` se leen tal cual, que es lo que hace falta para copiar un
+  // degradado de una plantilla a otra sin sacarlo a ojo de un render.
+  script += 'try { result.value = prop.value; } catch (eV) { result.valueError = eV.toString(); }\n';
+  script += 'try { result.propertyValueType = prop.propertyValueType; } catch (eT) {}\n';
   script += 'result;\n';
 
   return script;
