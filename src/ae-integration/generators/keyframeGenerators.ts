@@ -700,3 +700,90 @@ export function generateRemoveKeyframes(params: {
 
   return script;
 }
+
+/**
+ * Round keyframe times onto the exact frame grid.
+ *
+ * Why this exists: measured on a real 26-comp system, 101 of 547 segments had
+ * keys off the frame grid. The dominant offset is a THIRD of a frame, the
+ * signature of a 1/6 s time (4 exact frames at 24 fps) inherited when comps were
+ * ported to 50. After Effects renders those keys without complaining, so the
+ * problem is invisible by eye and only shows up when measured.
+ *
+ * Follows generateOffsetKeyframes: capture value, interpolation types AND ease,
+ * remove, re-add. Re-adding without copying the ease back would silently leave
+ * every key linear, a known trap in this codebase.
+ *
+ * Defaults to a DRY RUN: it reports what it would move and changes nothing.
+ * Moving a key changes the rendered image, slightly but really, so it gets
+ * approved before it happens.
+ *
+ * Refuses to touch a property where two keys would round onto the same frame:
+ * re-adding them would lose one.
+ */
+export function generateSnapKeyframesToGrid(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  property: string;
+  dryRun?: boolean;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+  script += generatePropertyAccess('layer', params.property);
+
+  script += 'var dry = ' + (params.dryRun === false ? 'false' : 'true') + ';\n';
+  script += 'if (prop.numKeys === 0) { throw new Error("Property has no keyframes"); }\n';
+  script += 'var fps = comp.frameRate;\n';
+  script += 'var movs = [], choque = null, keyData = [];\n';
+  script += 'for (var i = 1; i <= prop.numKeys; i++) {\n';
+  script += '  var t0 = prop.keyTime(i);\n';
+  script += '  var t1 = Math.round(t0 * fps) / fps;\n';
+  script += '  keyData.push({ time: t0, nuevo: t1, value: prop.keyValue(i),\n';
+  script += '    inType: prop.keyInInterpolationType(i), outType: prop.keyOutInterpolationType(i),\n';
+  script += '    inEase: prop.keyInTemporalEase(i), outEase: prop.keyOutTemporalEase(i) });\n';
+  // The threshold is measured in FRAMES, not seconds, and with slack: AE
+  // quantizes time onto its own internal grid, offset ~0.000013 s from exact
+  // multiples of 1/fps. A freshly snapped key lands on 0.15998697 rather than
+  // 0.16, i.e. 0.00065 frames out, and that IS on the grid. With the threshold
+  // at 0.000001 s the tool flagged as off-grid the very keys it had just
+  // snapped, and never converged.
+  script += '  var dv = Math.abs(t0 * fps - Math.round(t0 * fps));\n';
+  script += '  if (dv > 0.01) {\n';
+  script += '    movs.push({ de: t0, a: t1, fotogramaDe: t0 * fps, fotogramaA: Math.round(t1 * fps), desvio: dv });\n';
+  script += '  }\n';
+  script += '}\n';
+  script += 'for (var j = 1; j < keyData.length; j++) {\n';
+  script += '  if (Math.abs(keyData[j].nuevo - keyData[j-1].nuevo) < 0.000001) {\n';
+  script += '    choque = { fotograma: Math.round(keyData[j].nuevo * fps),\n';
+  script += '               tiempos: [keyData[j-1].time, keyData[j].time] };\n';
+  script += '  }\n';
+  script += '}\n';
+  script += 'var aplicado = false;\n';
+  script += 'if (!dry && !choque && movs.length > 0) {\n';
+  script += '  while (prop.numKeys > 0) { prop.removeKey(1); }\n';
+  script += '  for (var k = 0; k < keyData.length; k++) {\n';
+  script += '    var ki = prop.addKey(keyData[k].nuevo);\n';
+  script += '    prop.setValueAtKey(ki, keyData[k].value);\n';
+  script += '    prop.setInterpolationTypeAtKey(ki, keyData[k].inType, keyData[k].outType);\n';
+  script += '    prop.setTemporalEaseAtKey(ki, keyData[k].inEase, keyData[k].outEase);\n';
+  script += '  }\n';
+  script += '  aplicado = true;\n';
+  script += '}\n';
+
+  script += generateResultObject({
+    success: 'true',
+    fps: 'fps',
+    claves: 'keyData.length',
+    fueraDeRejilla: 'movs.length',
+    movimientos: 'movs',
+    choque: 'choque',
+    dryRun: 'dry',
+    aplicado: 'aplicado'
+  });
+
+  return wrapInUndoGroup(script, 'Snap Keyframes To Grid');
+}

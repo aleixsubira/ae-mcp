@@ -676,6 +676,23 @@ const TOOLS = [
     generator: generators.generateOffsetKeyframes
   },
   {
+    name: 'snap_keyframes_to_grid',
+    description: 'Round keyframe times to the exact frame grid, preserving value, interpolation type and temporal ease. Defaults to a dry run that only reports what it would move. Refuses to touch a property where two keys would land on the same frame.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compId: { type: 'number' },
+        compName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        layerName: { type: 'string' },
+        property: { type: 'string' },
+        dryRun: { type: 'boolean', description: 'Default true: report only, change nothing. Pass false to actually move the keys.' }
+      },
+      required: ['property']
+    },
+    generator: generators.generateSnapKeyframesToGrid
+  },
+  {
     name: 'scale_keyframe_timing',
     description: 'Scale keyframe timing (speed up or slow down)',
     inputSchema: {
