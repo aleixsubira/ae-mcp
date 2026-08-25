@@ -348,6 +348,27 @@ export function generateGetCompReport(params: {
   script += '  if (typeof v !== "number" || !isFinite(v)) { return null; }\n';
   script += '  return Math.round(v * 100) / 100;\n';
   script += '}\n';
+  // Keyframe times need more than 2 decimals. At 50 fps a frame is 0.02 s, so
+  // __r2 looks sufficient, but keys ported from a 24 fps comp land off-grid
+  // (0.1666796875 s = 8.334 frames) and __r2 rounds that to a clean 0.17,
+  // hiding it. The acceptance criteria demand an exact frame index per event,
+  // so the report must not launder that away.
+  script += 'function __r5(v) {\n';
+  script += '  if (typeof v !== "number" || !isFinite(v)) { return null; }\n';
+  script += '  return Math.round(v * 100000) / 100000;\n';
+  script += '}\n';
+  // A multidimensional property has one ease per component. They are usually
+  // identical, so collapse to a scalar and only emit an array when they really
+  // differ (Scale does: [81.67, 81.67, 33.333]).
+  script += 'function __ease(arr) {\n';
+  script += '  if (!arr || !arr.length) { return null; }\n';
+  script += '  var o = [], same = true;\n';
+  script += '  for (var i = 0; i < arr.length; i++) {\n';
+  script += '    o.push(__r2(arr[i]));\n';
+  script += '    if (i > 0 && o[i] !== o[0]) { same = false; }\n';
+  script += '  }\n';
+  script += '  return same ? o[0] : o;\n';
+  script += '}\n';
   script += 'function __vec(v) {\n';
   script += '  if (v === null || v === undefined) { return null; }\n';
   script += '  if (typeof v === "number") { return __r2(v); }\n';
@@ -427,7 +448,27 @@ export function generateGetCompReport(params: {
   script += '          entry.numKeys = sub.numKeys;\n';
   script += '          entry.keys = [];\n';
   script += '          for (var k = 1; k <= sub.numKeys && k <= 10; k++) {\n';
-  script += '            entry.keys.push({ t: __r2(sub.keyTime(k)), v: __vec(sub.keyValue(k)) });\n';
+  script += '            var K = { t: __r5(sub.keyTime(k)), v: __vec(sub.keyValue(k)) };\n';
+  // The interpolation type says bezier or linear, not how much curve: two
+  // masters both reporting 6613 can move completely differently. Influence is
+  // what tells them apart (linear 16.667, Easy Ease 33.333, and the house
+  // presets 80 and 100). get_keyframes has carried this since 24/08, but the
+  // report did not, and the report is what the constructor cards are built
+  // from -- so no card could show a curve. Not every property accepts a
+  // temporal ease (Source Text, Mask Path), hence the try.
+  script += '            try {\n';
+  script += '              var ei = sub.keyInTemporalEase(k), eo = sub.keyOutTemporalEase(k);\n';
+  script += '              var fi = [], si = [], fo = [], so = [];\n';
+  script += '              for (var q = 0; q < ei.length; q++) { fi.push(ei[q].influence); si.push(ei[q].speed); }\n';
+  script += '              for (var w = 0; w < eo.length; w++) { fo.push(eo[w].influence); so.push(eo[w].speed); }\n';
+  script += '              K.ii = __ease(fi); K.is = __ease(si);\n';
+  script += '              K.oi = __ease(fo); K.os = __ease(so);\n';
+  script += '            } catch (eEa) {}\n';
+  script += '            try {\n';
+  script += '              K.it = sub.keyInInterpolationType(k).toString();\n';
+  script += '              K.ot = sub.keyOutInterpolationType(k).toString();\n';
+  script += '            } catch (eIt) {}\n';
+  script += '            entry.keys.push(K);\n';
   script += '          }\n';
   script += '        }\n';
   script += '      } catch (eK) {}\n';
