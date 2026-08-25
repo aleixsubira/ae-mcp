@@ -498,6 +498,10 @@ export function generateGetCompReport(params: {
   // cannot tell an on-screen warning from one that only the person filling the
   // template ever sees, and that is the whole point of the warning layers.
   script += '  try { L.guideLayer = ly.guideLayer; } catch (eG) {}\n';
+  // label: the layer colour. It is a norm, not decoration (green for the client
+  // panel, yellow for the FAILFAST ones, blue for what gets painted, none for
+  // plumbing), so a report without it cannot check that norm at all.
+  script += '  try { L.label = ly.label; } catch (eLb) {}\n';
   script += '  try { L.parent = ly.parent ? ly.parent.name : null; } catch (eP) {}\n';
   // What the layer IS and what it CONTAINS. Without these the report is flat:
   // a precomposition looks like any other layer, so nothing downstream can walk
