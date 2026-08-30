@@ -233,16 +233,25 @@ export function generateSetTemporalEase(params: {
   script += '  throw new Error("Keyframe index out of range");\n';
   script += '}\n';
 
-  // Get number of dimensions
-  script += 'var numDims = 1;\n';
-  script += 'if (prop.propertyValueType === PropertyValueType.TwoD || prop.propertyValueType === PropertyValueType.TwoD_SPATIAL) {\n';
-  script += '  numDims = 2;\n';
-  script += '} else if (prop.propertyValueType === PropertyValueType.ThreeD || prop.propertyValueType === PropertyValueType.ThreeD_SPATIAL) {\n';
-  script += '  numDims = 3;\n';
-  script += '}\n';
-
   script += 'var currentInEase = prop.keyInTemporalEase(keyIndex);\n';
   script += 'var currentOutEase = prop.keyOutTemporalEase(keyIndex);\n';
+
+  // ⚠️ CUANTOS EASES QUIERE AE SE LE PREGUNTA, NO SE DEDUCE DEL TIPO.
+  //
+  // Antes se contaban 3 para ThreeD y ThreeD_SPATIAL, y con Position eso
+  // reventaba: «Unable to call setTemporalEaseAtKey because of parameter 2.
+  // Value array does not have 1 elements.» Una propiedad ESPACIAL lleva UN
+  // solo ease temporal para toda ella, no uno por eje, aunque su valor si
+  // tenga tres numeros. Scale (ThreeD, no espacial) si quiere tres.
+  //
+  // Deducirlo del tipo obliga a acertar esa distincion caso por caso; leer la
+  // longitud de keyInTemporalEase es la propia AE diciendo cuantos espera, y
+  // vale para los cuatro tipos sin enumerar ninguno.
+  //
+  // Medido el 31/08/2026 contra M01_Partners_CS · «▹ Rig · Anim LOGO» ·
+  // Position: keyInTemporalEase devuelve UN elemento. Bloqueaba 19 tramos de
+  // la normalizacion de curvas, 18 de Position y 1 de Scale.
+  script += 'var numDims = currentInEase.length;\n';
 
   script += 'var inEaseArr = [];\n';
   script += 'var outEaseArr = [];\n';
