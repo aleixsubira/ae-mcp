@@ -1173,7 +1173,7 @@ const TOOLS = [
   },
   {
     name: 'set_master_property',
-    description: 'Override one Master Property on a precomp layer.',
+    description: 'Override one Master Property on a precomp layer. For a media replacement slot ("ADBE Layer Source Alternate") pass the NAME of the project item as value: that property is NO_VALUE, so it is written with setAlternateSource, and neither a number nor an item id works. Returns the name of the substitute actually in place, so the change can be verified without a second call.',
     inputSchema: {
       type: 'object',
       properties: {

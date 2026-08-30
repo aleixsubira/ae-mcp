@@ -318,13 +318,59 @@ export function generateSetMasterProperty(params: {
   script += '  throw new Error("Master Property not found");\n';
   script += '}\n';
 
+  // ⚠️ UN HUECO DE SUSTITUCION DE MEDIO NO SE ESCRIBE CON setValue.
+  //
+  // «ADBE Layer Source Alternate» es propertyValueType NO_VALUE, asi que setValue
+  // lanza «Can not get or set a value from this property» y da igual el valor que
+  // se le pase: ni el nombre del item ni su id. La via buena es setAlternateSource,
+  // que recibe el ITEM del proyecto, no un numero.
+  //
+  // Medido el 28/08/2026 contra `T01_Orbita`: la reflexion de la propiedad
+  // devuelve el metodo setAlternateSource y las propiedades alternateSource y
+  // canSetAlternateSource, o sea que el API existia y lo que faltaba era usarlo.
+  // Sin esto, una transicion compartida por varias juntas enseña las MISMAS dos
+  // piezas en todas, que es justo lo que hace inservible una transicion reutilizable.
+  //
+  // Aqui el valor que llega es el NOMBRE del item del proyecto.
   const value = Array.isArray(params.value) ? arrayToES3(params.value) : String(params.value);
-  script += 'p.setValue(' + value + ');\n';
+
+  script += 'if (p.matchName === "ADBE Layer Source Alternate") {\n';
+  script += '  var wanted = "' + escapeString(String(params.value)) + '";\n';
+  script += '  var found = null;\n';
+  script += '  for (var i = 1; i <= app.project.numItems; i++) {\n';
+  script += '    if (app.project.item(i).name === wanted) { found = app.project.item(i); break; }\n';
+  script += '  }\n';
+  script += '  if (!found) {\n';
+  script += '    throw new Error("No hay ningun item del proyecto que se llame " + wanted);\n';
+  script += '  }\n';
+  // canSetAlternateSource sale por reflexion como propiedad, pero en el API es un
+  // metodo que recibe el item. Se prueba, y si no lo es no se bloquea por ello.
+  script += '  var admite = true;\n';
+  script += '  try {\n';
+  script += '    if (typeof p.canSetAlternateSource === "function") { admite = p.canSetAlternateSource(found); }\n';
+  script += '  } catch (e) { admite = true; }\n';
+  script += '  if (!admite) {\n';
+  script += '    throw new Error("AE no acepta " + wanted + " como sustituto de este hueco");\n';
+  script += '  }\n';
+  script += '  p.setAlternateSource(found);\n';
+  script += '} else {\n';
+  script += '  p.setValue(' + value + ');\n';
+  script += '}\n';
+
+  // p.value tambien revienta en una NO_VALUE, asi que el resultado se lee segun el
+  // tipo de propiedad. Devolver el nombre del sustituto deja verificar el cambio
+  // sin una segunda llamada.
+  script += 'var leido = null;\n';
+  script += 'if (p.matchName === "ADBE Layer Source Alternate") {\n';
+  script += '  leido = p.alternateSource ? p.alternateSource.name : null;\n';
+  script += '} else {\n';
+  script += '  leido = p.value;\n';
+  script += '}\n';
 
   script += generateResultObject({
     success: 'true',
     name: 'p.name',
-    value: 'p.value'
+    value: 'leido'
   });
 
   return wrapInUndoGroup(script, 'Set Master Property');
