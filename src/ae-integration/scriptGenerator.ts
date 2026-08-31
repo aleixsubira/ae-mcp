@@ -58,6 +58,7 @@ export {
   generateSetTemporalEase,
   generateOffsetKeyframes,
   generateSnapKeyframesToGrid,
+  generateMoveKeyframe,
   generateScaleKeyframeTiming,
   generateReverseKeyframes,
   generateGetTextKeyframes,

@@ -842,3 +842,97 @@ export function generateSnapKeyframesToGrid(params: {
 
   return wrapInUndoGroup(script, 'Snap Keyframes To Grid');
 }
+
+/**
+ * Mover UNA clave a un tiempo concreto, conservandolo todo.
+ *
+ * ⚠️ POR QUE HACE FALTA. El API de AE no deja cambiar el tiempo de una clave:
+ * hay que borrarla y volver a crearla. `offset_keyframes` desplaza TODAS y
+ * `snap_keyframes_to_grid` va al fotograma mas cercano, asi que ninguna sirve
+ * para «esta clave, a este fotograma».
+ *
+ * El caso que lo pidio, 31/08/2026: seis animaciones acababan UN FOTOGRAMA
+ * antes del final de su pieza. No era un descuido: a 30 fps caian clavadas en
+ * el ultimo fotograma (4,96668 s x 30 = 149, y una comp de 5 s a 30 fps tiene
+ * los fotogramas 0..149), y al traerlas a 50 se conservo el TIEMPO en vez del
+ * SIGNIFICADO. Redondear al fotograma mas cercano las dejaba en el penultimo.
+ *
+ * Lleva las mismas protecciones que el snap, y por el mismo susto: dimensiones
+ * separadas ni se tocan, las tangentes espaciales viajan, y todo va dentro de
+ * un try para que un fallo a mitad no deje la propiedad sin animacion.
+ */
+export function generateMoveKeyframe(params: {
+  compId?: number;
+  compName?: string;
+  layerIndex?: number;
+  layerName?: string;
+  property: string;
+  keyframeIndex: number;
+  time: number;
+  dryRun?: boolean;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+  script += generateCompAccess(params.compId, params.compName);
+  script += generateLayerAccess('comp', params.layerIndex, params.layerName);
+  script += generatePropertyAccess('layer', params.property);
+
+  script += 'var dry = ' + (params.dryRun === false ? 'false' : 'true') + ';\n';
+  script += 'var idx = ' + params.keyframeIndex + ';\n';
+  script += 'var destino = ' + params.time + ';\n';
+  script += 'if (prop.numKeys === 0) { throw new Error("Property has no keyframes"); }\n';
+  script += 'if (idx < 1 || idx > prop.numKeys) { throw new Error("Keyframe index out of range"); }\n';
+  script += 'if (prop.dimensionsSeparated === true) {\n';
+  script += '  throw new Error("Esta propiedad tiene las dimensiones separadas: mover sus claves aqui destruiria la animacion. Usa X Position, Y Position y Z Position por separado.");\n';
+  script += '}\n';
+
+  // Una clave no puede aterrizar encima de otra: se avisa antes de borrar nada.
+  script += 'var fps = comp.frameRate;\n';
+  script += 'var choque = null;\n';
+  script += 'for (var q = 1; q <= prop.numKeys; q++) {\n';
+  script += '  if (q !== idx && Math.abs(prop.keyTime(q) - destino) < 0.5 / fps) {\n';
+  script += '    choque = { conClave: q, tiempo: prop.keyTime(q) };\n';
+  script += '  }\n';
+  script += '}\n';
+
+  script += 'var origen = prop.keyTime(idx);\n';
+  script += 'var d = { value: prop.keyValue(idx),\n';
+  script += '  inType: prop.keyInInterpolationType(idx), outType: prop.keyOutInterpolationType(idx),\n';
+  script += '  inEase: prop.keyInTemporalEase(idx), outEase: prop.keyOutTemporalEase(idx),\n';
+  script += '  esp: prop.isSpatial,\n';
+  script += '  inSp: prop.isSpatial ? prop.keyInSpatialTangent(idx) : null,\n';
+  script += '  outSp: prop.isSpatial ? prop.keyOutSpatialTangent(idx) : null,\n';
+  script += '  rove: prop.isSpatial ? prop.keyRoving(idx) : false };\n';
+
+  script += 'var aplicado = false;\n';
+  script += 'if (!dry && !choque && Math.abs(origen - destino) > 1e-9) {\n';
+  script += '  try {\n';
+  script += '    prop.removeKey(idx);\n';
+  script += '    var ki = prop.addKey(destino);\n';
+  script += '    prop.setValueAtKey(ki, d.value);\n';
+  script += '    prop.setInterpolationTypeAtKey(ki, d.inType, d.outType);\n';
+  script += '    prop.setTemporalEaseAtKey(ki, d.inEase, d.outEase);\n';
+  script += '    if (d.esp) {\n';
+  script += '      if (d.inSp) { prop.setSpatialTangentsAtKey(ki, d.inSp, d.outSp); }\n';
+  script += '      if (d.rove) { prop.setRovingAtKey(ki, true); }\n';
+  script += '    }\n';
+  script += '    aplicado = true;\n';
+  script += '  } catch (e) {\n';
+  script += '    throw new Error("Fallo al mover la clave y se ha deshecho el cambio: " + e.toString());\n';
+  script += '  }\n';
+  script += '}\n';
+
+  script += generateResultObject({
+    success: 'true',
+    de: 'origen',
+    a: 'destino',
+    fotogramaDe: 'origen * fps',
+    fotogramaA: 'Math.round(destino * fps)',
+    claves: 'prop.numKeys',
+    choque: 'choque',
+    dryRun: 'dry',
+    aplicado: 'aplicado'
+  });
+
+  return wrapInUndoGroup(script, 'Move Keyframe');
+}

@@ -676,6 +676,25 @@ const TOOLS = [
     generator: generators.generateOffsetKeyframes
   },
   {
+    name: 'move_keyframe',
+    description: 'Move ONE keyframe to an exact time, keeping its value, interpolation, temporal ease and spatial tangents. Use it when a key has to land on a SPECIFIC frame: offset_keyframes shifts them all and snap_keyframes_to_grid goes to the nearest frame. Refuses on a property with separated dimensions, and reports a clash instead of stacking two keys on the same frame. Dry run by default: pass dryRun false to apply.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        compName: { type: 'string' },
+        compId: { type: 'number' },
+        layerName: { type: 'string' },
+        layerIndex: { type: 'number' },
+        property: { type: 'string' },
+        keyframeIndex: { type: 'number' },
+        time: { type: 'number' },
+        dryRun: { type: 'boolean' }
+      },
+      required: ['property', 'keyframeIndex', 'time']
+    },
+    generator: generators.generateMoveKeyframe
+  },
+  {
     name: 'snap_keyframes_to_grid',
     description: 'Round keyframe times to the exact frame grid, preserving value, interpolation type and temporal ease. Defaults to a dry run that only reports what it would move. Refuses to touch a property where two keys would land on the same frame.',
     inputSchema: {
