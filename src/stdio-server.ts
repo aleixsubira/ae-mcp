@@ -798,7 +798,7 @@ const TOOLS = [
   },
   {
     name: 'remove_keyframes',
-    description: 'Remove keyframes from a property. Without `times` it strips every key and leaves the property holding the value it had, so undoing an inherited animation does not also move the layer. The alternative was an expression returning a constant, which hides the animation instead of removing it and leaves the timeline lying about what the layer does.',
+    description: 'Remove keyframes from a property. Say WHICH keys with `times` (seconds) or `indices` (key numbers, 1 = first). Removing every key needs `all: true` on purpose: it used to be the default when no selection was given, so a misspelt parameter name wiped the whole property and still reported success. With `all` it strips every key and leaves the property holding the value it had, so undoing an inherited animation does not also move the layer.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -807,8 +807,10 @@ const TOOLS = [
         layerIndex: { type: 'number' },
         layerName: { type: 'string' },
         property: { type: 'string' },
-        times: { type: 'array', items: { type: 'number' }, description: 'Times in seconds of the keys to remove. Matches the nearest key within half a frame. Omit to remove all of them.' },
-        keepValueAt: { type: 'number', description: 'When removing all keys, the time whose value the property keeps. Defaults to the first key.' }
+        times: { type: 'array', items: { type: 'number' }, description: 'Times in seconds of the keys to remove. Matches the nearest key within half a frame. A time that matches no key is an error and nothing is removed.' },
+        indices: { type: 'array', items: { type: 'number' }, description: 'Key numbers to remove, 1 = the first key. Removed high to low so the numbering does not shift. Out of range is an error.' },
+        all: { type: 'boolean', description: 'Remove EVERY key. Required to do so: without `times`, `indices` or this, the call fails instead of wiping the property.' },
+        keepValueAt: { type: 'number', description: 'With `all`, the time whose value the property keeps. Defaults to the first key.' }
       },
       required: ['property']
     },

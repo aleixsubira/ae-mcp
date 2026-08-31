@@ -677,8 +677,40 @@ export function generateRemoveKeyframes(params: {
   layerName?: string;
   property: string;
   times?: number[];
+  indices?: number[];
+  all?: boolean;
   keepValueAt?: number;
 }): string {
+  const porTiempo = !!(params.times && params.times.length);
+  const porIndice = !!(params.indices && params.indices.length);
+
+  // ⚠️ BORRAR TODAS LAS CLAVES ES UN ACTO EXPLICITO, NO EL COMPORTAMIENTO POR
+  // DEFECTO.
+  //
+  // Antes, la ausencia de `times` significaba "quitalas todas". Como el esquema
+  // no rechaza parametros desconocidos, escribir mal el nombre del parametro
+  // (por ejemplo `keyframeIndices` en vez de `indices`) hacia que la seleccion
+  // se ignorara en silencio y la herramienta borrara la propiedad entera
+  // devolviendo success:true.
+  //
+  // Medido el 31/08/2026 en «M02_Branding_AW · ▹ CAM · Dolly · Position»: se
+  // pidieron las claves 3 y 4 y desaparecieron las cuatro. Hubo que recrear la
+  // animacion a mano desde un volcado anterior.
+  //
+  // Ahora el borrado total exige `all: true`, asi que una peticion mal escrita
+  // falla en vez de destruir.
+  if (!porTiempo && !porIndice && params.all !== true) {
+    throw new Error(
+      'remove_keyframes: no has dicho que claves quitar. Usa `times` (segundos) o `indices` ' +
+      '(numeros de clave, 1 = la primera). Para quitarlas TODAS hay que pedirlo a proposito ' +
+      'con `all: true`. Esta guarda existe porque un nombre de parametro mal escrito borraba ' +
+      'la propiedad entera sin avisar.'
+    );
+  }
+  if (porTiempo && porIndice) {
+    throw new Error('remove_keyframes: usa `times` o `indices`, no las dos.');
+  }
+
   let script = '';
   script += generateProjectCheck();
   script += generateCompAccess(params.compId, params.compName);
@@ -688,16 +720,39 @@ export function generateRemoveKeyframes(params: {
   script += 'var antes = prop.numKeys;\n';
   script += 'if (antes === 0) { throw new Error("Property has no keyframes: ' + escapeString(params.property) + '"); }\n';
 
-  if (params.times && params.times.length) {
+  if (porTiempo) {
     // Remove only the named times, nearest key within half a frame.
+    // Se BUSCA todo primero y se borra despues. El envoltorio de deshacer cierra
+    // el grupo cuando algo revienta pero NO lo deshace, asi que fallar a mitad
+    // dejaria unas claves quitadas y otras no. Buscando antes, o se hace entero
+    // o no se toca nada.
     script += 'var objetivos = ' + JSON.stringify(params.times) + ';\n';
     script += 'var tol = 1 / (2 * comp.frameRate);\n';
-    script += 'var quitados = [];\n';
+    script += 'var elegidos = [], noEncontrados = [];\n';
     script += 'for (var t = 0; t < objetivos.length; t++) {\n';
+    script += '  var hallado = 0;\n';
     script += '  for (var i = prop.numKeys; i >= 1; i--) {\n';
-    script += '    if (Math.abs(prop.keyTime(i) - objetivos[t]) <= tol) { quitados.push(prop.keyTime(i)); prop.removeKey(i); break; }\n';
+    script += '    if (Math.abs(prop.keyTime(i) - objetivos[t]) <= tol) { hallado = i; break; }\n';
     script += '  }\n';
+    script += '  if (hallado === 0) { noEncontrados.push(objetivos[t]); }\n';
+    script += '  else { var repe = false;\n';
+    script += '    for (var q = 0; q < elegidos.length; q++) { if (elegidos[q] === hallado) { repe = true; } }\n';
+    script += '    if (!repe) { elegidos.push(hallado); } }\n';
     script += '}\n';
+    script += 'if (noEncontrados.length > 0) { throw new Error("No hay clave en estos tiempos y no se ha tocado nada: " + noEncontrados.join(", ")); }\n';
+    // De mayor a menor: quitar la 2 antes que la 4 renumeraria la 4.
+    script += 'elegidos.sort(function (a, b) { return b - a; });\n';
+    script += 'var quitados = [];\n';
+    script += 'for (var n = 0; n < elegidos.length; n++) { quitados.push(prop.keyTime(elegidos[n])); prop.removeKey(elegidos[n]); }\n';
+  } else if (porIndice) {
+    // De mayor a menor: quitar la 2 antes que la 4 renumeraria la 4.
+    const orden = Array.from(new Set(params.indices as number[])).sort((a, b) => b - a);
+    script += 'var indices = ' + JSON.stringify(orden) + ';\n';
+    script += 'for (var n = 0; n < indices.length; n++) {\n';
+    script += '  if (indices[n] < 1 || indices[n] > antes) { throw new Error("Keyframe index out of range: " + indices[n] + " (la propiedad tiene " + antes + ")"); }\n';
+    script += '}\n';
+    script += 'var quitados = [];\n';
+    script += 'for (var n = 0; n < indices.length; n++) { quitados.push(prop.keyTime(indices[n])); prop.removeKey(indices[n]); }\n';
   } else {
     // Freeze the value first, then strip every key, so the property does not
     // fall back to whatever static value was under the animation.
