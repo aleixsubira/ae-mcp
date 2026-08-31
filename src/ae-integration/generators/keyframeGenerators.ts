@@ -754,6 +754,25 @@ export function generateSnapKeyframesToGrid(params: {
 
   script += 'var dry = ' + (params.dryRun === false ? 'false' : 'true') + ';\n';
   script += 'if (prop.numKeys === 0) { throw new Error("Property has no keyframes"); }\n';
+
+  // ⚠️ DIMENSIONES SEPARADAS: NO SE TOCAN, SE AVISA.
+  //
+  // Este guion mueve claves borrandolas todas y recreandolas, porque el API de
+  // AE no deja cambiar el tiempo de una clave. En una Position con las
+  // dimensiones separadas eso es una trampa mortal: AE mantiene sincronizadas
+  // la Position "maestra" y sus X/Y/Z, y borrar y recrear en una mientras la
+  // otra tiene claves entra en bucle.
+  //
+  // Medido el 31/08/2026 en «M04_Branding_AW · ▹ CAM · Travelling»: dejo After
+  // Effects al 100 % de CPU durante tres minutos y, al abortarlo, Position
+  // habia pasado de 4 claves a 1 y X Position de 4 a 0. Se perdio la animacion
+  // entera de la camara y hubo que reabrir el proyecto guardado.
+  //
+  // Se para ANTES de borrar nada y se dice que hacer: cada dimension por su
+  // lado, que si funciona.
+  script += 'if (prop.dimensionsSeparated === true) {\n';
+  script += '  throw new Error("Esta propiedad tiene las dimensiones separadas: mover sus claves aqui destruiria la animacion. Usa X Position, Y Position y Z Position por separado.");\n';
+  script += '}\n';
   script += 'var fps = comp.frameRate;\n';
   script += 'var movs = [], choque = null, keyData = [];\n';
   script += 'for (var i = 1; i <= prop.numKeys; i++) {\n';
@@ -761,7 +780,15 @@ export function generateSnapKeyframesToGrid(params: {
   script += '  var t1 = Math.round(t0 * fps) / fps;\n';
   script += '  keyData.push({ time: t0, nuevo: t1, value: prop.keyValue(i),\n';
   script += '    inType: prop.keyInInterpolationType(i), outType: prop.keyOutInterpolationType(i),\n';
-  script += '    inEase: prop.keyInTemporalEase(i), outEase: prop.keyOutTemporalEase(i) });\n';
+  script += '    inEase: prop.keyInTemporalEase(i), outEase: prop.keyOutTemporalEase(i),\n';
+  // Las tangentes ESPACIALES no viajaban en la copia, asi que al recrear las
+  // claves de una Position se perdia la trayectoria: la animacion seguia ahi
+  // pero pasaba por otro sitio. Es el daño que no da error y no se ve hasta
+  // que alguien mira el render.
+  script += '    esp: prop.isSpatial,\n';
+  script += '    inSp: prop.isSpatial ? prop.keyInSpatialTangent(i) : null,\n';
+  script += '    outSp: prop.isSpatial ? prop.keyOutSpatialTangent(i) : null,\n';
+  script += '    rove: prop.isSpatial ? prop.keyRoving(i) : false });\n';
   // The threshold is measured in FRAMES, not seconds, and with slack: AE
   // quantizes time onto its own internal grid, offset ~0.000013 s from exact
   // multiples of 1/fps. A freshly snapped key lands on 0.15998697 rather than
@@ -781,14 +808,25 @@ export function generateSnapKeyframesToGrid(params: {
   script += '}\n';
   script += 'var aplicado = false;\n';
   script += 'if (!dry && !choque && movs.length > 0) {\n';
-  script += '  while (prop.numKeys > 0) { prop.removeKey(1); }\n';
-  script += '  for (var k = 0; k < keyData.length; k++) {\n';
-  script += '    var ki = prop.addKey(keyData[k].nuevo);\n';
-  script += '    prop.setValueAtKey(ki, keyData[k].value);\n';
-  script += '    prop.setInterpolationTypeAtKey(ki, keyData[k].inType, keyData[k].outType);\n';
-  script += '    prop.setTemporalEaseAtKey(ki, keyData[k].inEase, keyData[k].outEase);\n';
+  // Todo el borrado y recreado va dentro de un try. Si algo revienta a mitad,
+  // se relanza el error con lo que se sabe, y el grupo de deshacer que envuelve
+  // el guion deja el proyecto como estaba en vez de con la animacion a medias.
+  script += '  try {\n';
+  script += '    while (prop.numKeys > 0) { prop.removeKey(1); }\n';
+  script += '    for (var k = 0; k < keyData.length; k++) {\n';
+  script += '      var ki = prop.addKey(keyData[k].nuevo);\n';
+  script += '      prop.setValueAtKey(ki, keyData[k].value);\n';
+  script += '      prop.setInterpolationTypeAtKey(ki, keyData[k].inType, keyData[k].outType);\n';
+  script += '      prop.setTemporalEaseAtKey(ki, keyData[k].inEase, keyData[k].outEase);\n';
+  script += '      if (keyData[k].esp) {\n';
+  script += '        if (keyData[k].inSp)  { prop.setSpatialTangentsAtKey(ki, keyData[k].inSp, keyData[k].outSp); }\n';
+  script += '        if (keyData[k].rove)  { prop.setRovingAtKey(ki, true); }\n';
+  script += '      }\n';
+  script += '    }\n';
+  script += '    aplicado = true;\n';
+  script += '  } catch (e) {\n';
+  script += '    throw new Error("Fallo al recolocar las claves y se ha deshecho el cambio: " + e.toString());\n';
   script += '  }\n';
-  script += '  aplicado = true;\n';
   script += '}\n';
 
   script += generateResultObject({
