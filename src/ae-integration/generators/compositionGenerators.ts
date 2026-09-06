@@ -487,6 +487,14 @@ export function generateGetCompReport(params: {
   script += 'for (var li = 1; li <= comp.numLayers; li++) {\n';
   script += '  var ly = comp.layer(li);\n';
   script += '  var L = { index: li, name: ly.name, matchName: ly.matchName, enabled: ly.enabled, inPoint: __r2(ly.inPoint), outPoint: __r2(ly.outPoint) };\n';
+  // startTime: where the layer's OWN time zero sits on the parent timeline. The
+  // report had inPoint and outPoint, which say when the layer is visible, and
+  // that is not the same thing: a layer trimmed at the head is visible from its
+  // inPoint but its content started earlier. Without startTime you cannot tell a
+  // trimmed sequence from a shorter one, and you cannot map a frame of the parent
+  // to a frame of the source. Measured 04/09/2026: an entire junction checker had
+  // to be fed a hand-typed JSON because of this one missing field.
+  script += '  try { L.startTime = __r2(ly.startTime); } catch (eSt) {}\n';
   script += '  try { L.threeD = ly.threeDLayer; } catch (e3) {}\n';
   // shy, solo, locked: the three switches that decide what a person actually
   // sees and can touch when they open the comp. Without them a report cannot
@@ -517,6 +525,42 @@ export function generateGetCompReport(params: {
   script += '    else if (ly.source) { L.kind = "footage"; L.source = ly.source.name; }\n';
   script += '    else { L.kind = "otra"; }\n';
   script += '  } catch (eK) { L.kind = null; }\n';
+  // Master Properties: what makes an INSTANCE an instance. A precomp layer whose
+  // source publishes to Essential Graphics carries its own values here, and those
+  // values are the whole difference between two layers that use the same comp.
+  // A report without them cannot tell instances apart, so it cannot check that a
+  // montage points at the right pieces, and it pushes whoever needs that data to
+  // keep a second copy of it by hand.
+  //
+  // ⚠️ A Master Property can be a TextDocument, and reading one blows up the JSON
+  // pass with "Text document not of Box document type". Values are reduced to
+  // something serialisable HERE and never handed over raw, same as in
+  // generateGetMasterProperties. A media replacement slot is NO_VALUE, so it
+  // reports its name and the source layer it stands for, which is what identifies
+  // the slot; what was dropped into it is not readable from scripting.
+  script += '  try {\n';
+  script += '    var eg = ly.property("Essential Properties");\n';
+  script += '    if (eg && eg.numProperties > 0) {\n';
+  script += '      L.masterProps = [];\n';
+  script += '      for (var mi = 1; mi <= eg.numProperties; mi++) {\n';
+  script += '        var mp = eg.property(mi);\n';
+  script += '        var it = { index: mi };\n';
+  script += '        try { it.name = mp.name; } catch (eN) {}\n';
+  script += '        try { it.matchName = mp.matchName; } catch (eMn) {}\n';
+  script += '        try {\n';
+  script += '          var mv = mp.value;\n';
+  script += '          var mt = typeof mv;\n';
+  script += '          if (mv === null || mv === undefined) { it.value = null; }\n';
+  script += '          else if (mt === "number" || mt === "string" || mt === "boolean") { it.value = mv; }\n';
+  script += '          else if (mv instanceof Array) { var ma = []; for (var mk = 0; mk < mv.length; mk++) ma.push(mv[mk]); it.value = ma; }\n';
+  script += '          else if (typeof mv.text === "string") { it.value = mv.text; }\n';
+  script += '          else { it.value = null; }\n';
+  script += '        } catch (eV) { it.value = null; }\n';
+  script += '        try { var ms = mp.essentialPropertySource; if (ms) { it.sourceName = ms.name; } } catch (eSp) {}\n';
+  script += '        L.masterProps.push(it);\n';
+  script += '      }\n';
+  script += '    }\n';
+  script += '  } catch (eEg) {}\n';
   // Track mattes: a matte and the layer it cuts are one mechanism, and the
   // report showed them as two unrelated layers.
   script += '  try {\n';

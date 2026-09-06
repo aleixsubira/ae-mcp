@@ -332,7 +332,16 @@ export function generateSetMasterProperty(params: {
   // piezas en todas, que es justo lo que hace inservible una transicion reutilizable.
   //
   // Aqui el valor que llega es el NOMBRE del item del proyecto.
-  const value = Array.isArray(params.value) ? arrayToES3(params.value) : String(params.value);
+  // ⚠️ UNA CADENA SE ESCRIBE ENTRECOMILLADA Y ESCAPADA. Sin esto salia
+  // `p.setValue(Con vaso termico)` y AE devolvia «SyntaxError: Expected: )»,
+  // asi que TODA Master Property de texto (un Source Text publicado, que es
+  // como el cliente rellena las plantillas) era imposible de sobrescribir.
+  // Los numeros y los arrays ya iban bien, que es por lo que no se habia visto.
+  const value = Array.isArray(params.value)
+    ? arrayToES3(params.value)
+    : typeof params.value === 'string'
+      ? '"' + escapeString(params.value) + '"'
+      : String(params.value);
 
   script += 'if (p.matchName === "ADBE Layer Source Alternate") {\n';
   script += '  var wanted = "' + escapeString(String(params.value)) + '";\n';
@@ -364,7 +373,13 @@ export function generateSetMasterProperty(params: {
   script += 'if (p.matchName === "ADBE Layer Source Alternate") {\n';
   script += '  leido = p.alternateSource ? p.alternateSource.name : null;\n';
   script += '} else {\n';
-  script += '  leido = p.value;\n';
+  // ⚠️ LA RELECTURA NO PUEDE TUMBAR UNA ESCRITURA QUE YA HA IDO BIEN. En una
+  // Master Property de texto, `p.value` lanza «Text document not of Box document
+  // type» aunque el setValue haya entrado: el 04/09 esto informaba de un fallo
+  // inexistente y el texto SI estaba puesto. Un valor que no se puede releer se
+  // devuelve como null, no como error.
+  script += '  try { leido = p.value; } catch (e) { leido = null; }\n';
+  script += '  if (leido !== null && typeof leido === "object" && leido.text !== undefined) { leido = leido.text; }\n';
   script += '}\n';
 
   script += generateResultObject({
