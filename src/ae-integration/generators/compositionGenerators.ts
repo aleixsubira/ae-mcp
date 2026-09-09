@@ -717,6 +717,116 @@ export function generateGetCompReport(params: {
  * Todo lo que no sea ASCII imprimible sale como \uXXXX: los nombres de capa de
  * este proyecto van llenos de ñ, ·, ▹ y ⚙, y por ahi se rompe un fichero.
  */
+
+/**
+ * Volcar TODAS las composiciones del proyecto de una sola llamada.
+ *
+ * ⚠️ POR QUE. `dump_comp_report` es de una en una, y este proyecto tiene 159
+ * comps: refrescar el volcado eran 159 llamadas, asi que en la practica se
+ * volcaba «lo que hacia falta» y el resto se quedaba viejo. De ahi salieron un
+ * volcado de gominolas del 19/08 tapando al de hoy y una pastilla de precios
+ * cuya logica no estaba medida en ningun sitio. Aleix, 08/09: «¿vamos a estar
+ * asi todo el rato? ¿no se puede volcar todo?».
+ *
+ * Escribe un JSON por comp en `outDir`, con el nombre de la comp. Las barras se
+ * sustituyen por guiones, que no se puede tener una barra en un nombre de
+ * fichero. Devuelve el recuento y la lista de las que fallaron, sin parar: una
+ * comp rota no puede impedir volcar las otras 158.
+ */
+export function generateDumpAllComps(params: {
+  outDir: string;
+  sampleTimes?: number[];
+  textPreview?: number;
+  soloNombre?: string;
+}): string {
+  // El cuerpo del informe de siempre, convertido en funcion de `comp`.
+  // ⚠️ SE CORTA POR UN MARCADOR, no por un regex sobre la resolucion de la comp:
+  // `generateCompAccess` emite un bucle de busqueda, no un `var comp = ...`, y
+  // recortarlo a ojo dejaba dentro la busqueda del nombre falso. El cuerpo del
+  // informe empieza siempre en el primer helper, `__r2`.
+  const entero = generateGetCompReport({
+    compName: '__NO_SE_USA__',
+    sampleTimes: params.sampleTimes,
+    textPreview: params.textPreview,
+  });
+  const iCuerpo = entero.indexOf('function __r2(v) {');
+  if (iCuerpo < 0) throw new Error('No encuentro el cuerpo del informe: ha cambiado generateGetCompReport');
+  const cuerpo = entero.slice(iCuerpo).replace(/report;\n$/, '');
+
+  let script = '';
+  script += generateProjectCheck();
+  script += 'function __informe(comp) {\n' + cuerpo + '  return report;\n}\n';
+
+  // Los serializadores, los mismos que usa dump_comp_report.
+  script += 'function __esc(s) {\n';
+  script += '  s = String(s); var out = "", c, code, h;\n';
+  script += '  for (var i = 0; i < s.length; i++) {\n';
+  script += '    c = s.charAt(i); code = s.charCodeAt(i);\n';
+  script += '    if (c === "\\"") { out += "\\\\\\""; }\n';
+  script += '    else if (c === "\\\\") { out += "\\\\\\\\"; }\n';
+  script += '    else if (code === 10) { out += "\\\\n"; }\n';
+  script += '    else if (code === 13) { out += "\\\\r"; }\n';
+  script += '    else if (code === 9) { out += "\\\\t"; }\n';
+  script += '    else if (code < 32 || code > 126) {\n';
+  script += '      h = code.toString(16); while (h.length < 4) { h = "0" + h; }\n';
+  script += '      out += "\\\\u" + h;\n';
+  script += '    } else { out += c; }\n';
+  script += '  }\n';
+  script += '  return "\\"" + out + "\\"";\n';
+  script += '}\n';
+  script += 'function __ser(v) {\n';
+  script += '  if (v === null || v === undefined) { return "null"; }\n';
+  script += '  var t = typeof v;\n';
+  script += '  if (t === "number") { return isFinite(v) ? String(v) : "null"; }\n';
+  script += '  if (t === "boolean") { return v ? "true" : "false"; }\n';
+  script += '  if (t === "string") { return __esc(v); }\n';
+  script += '  if (v instanceof Array) {\n';
+  script += '    var a = []; for (var i = 0; i < v.length; i++) { a.push(__ser(v[i])); }\n';
+  script += '    return "[" + a.join(",") + "]";\n';
+  script += '  }\n';
+  script += '  var o = [];\n';
+  script += '  for (var k in v) {\n';
+  script += '    if (!v.hasOwnProperty(k)) { continue; }\n';
+  script += '    if (typeof v[k] === "function") { continue; }\n';
+  script += '    o.push(__esc(k) + ":" + __ser(v[k]));\n';
+  script += '  }\n';
+  script += '  return "{" + o.join(",") + "}";\n';
+  script += '}\n';
+
+  const dir = params.outDir.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const filtro = (params.soloNombre || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+  script += 'var __dir = new Folder("' + dir + '");\n';
+  script += 'if (!__dir.exists) { __dir.create(); }\n';
+  script += 'var __hechas = 0, __bytes = 0, __fallos = [];\n';
+  script += 'var __filtro = "' + filtro + '";\n';
+  script += 'for (var __i = 1; __i <= app.project.numItems; __i++) {\n';
+  // Nada de `instanceof`: miente con los objetos de AE. Una comp es lo unico
+  // que tiene capas.
+  script += '  var __it = app.project.item(__i);\n';
+  script += '  if (__it.numLayers === undefined) { continue; }\n';
+  script += '  if (__filtro && __it.name.indexOf(__filtro) < 0) { continue; }\n';
+  script += '  try {\n';
+  script += '    var __rep = __informe(__it);\n';
+  script += '    var __txt = __ser(__rep);\n';
+  // ⚠️ EL ID VA EN EL NOMBRE DEL FICHERO. Doce comps de este proyecto comparten
+  // nombre (las envolturas `… 2` que crea AE al soltar un medio, y dos
+  // `Place Holder_GOMIS`), asi que volcando solo por nombre se pisaban entre
+  // ellas: 159 comps daban 147 ficheros. El id es lo unico que no se repite.
+  script += '    var __nombre = __it.name.replace(/[\\/\\\\:]/g, "-") + " · " + __it.id;\n';
+  script += '    var __f = new File(__dir.fsName + "/" + __nombre + ".json");\n';
+  script += '    __f.encoding = "UTF-8";\n';
+  script += '    if (!__f.open("w")) { throw new Error("no se pudo abrir " + __f.fsName); }\n';
+  script += '    __f.write(__txt); __f.close();\n';
+  script += '    __hechas++; __bytes += __txt.length;\n';
+  script += '  } catch (__e) { __fallos.push({ comp: __it.name, error: String(__e) }); }\n';
+  script += '}\n';
+  script += 'var __res = { success: true, carpeta: __dir.fsName, comps: __hechas, bytes: __bytes, fallos: __fallos };\n';
+  script += '__res;\n';
+
+  return script;
+}
+
 export function generateDumpCompReport(params: {
   compId?: number;
   compName?: string;

@@ -429,6 +429,7 @@ export function generateMoveProjectItem(params: {
   folderId?: number;
   folderName?: string;
   createFolder?: boolean;
+  toRoot?: boolean;
 }): string {
   let script = '';
   script += generateProjectCheck();
@@ -446,9 +447,18 @@ export function generateMoveProjectItem(params: {
   }
 
   // Find the destination folder
-  if (params.folderId !== undefined) {
+  //
+  // ⚠️ NADA DE `instanceof` CON OBJETOS DE AE: `folder instanceof FolderItem`
+  // devuelve falso para una carpeta de verdad, asi que la rama de folderId
+  // lanzaba SIEMPRE y solo funcionaba buscar por nombre. Una carpeta es lo
+  // unico que tiene numItems y no tiene capas.
+  if (params.toRoot) {
+    // La raiz no aparece en app.project.item(), asi que no habia forma de
+    // sacar algo de una carpeta. Las zonas van a la vista, en la raiz.
+    script += 'var folder = app.project.rootFolder;\n';
+  } else if (params.folderId !== undefined) {
     script += 'var folder = app.project.itemByID(' + params.folderId + ');\n';
-    script += 'if (!folder || !(folder instanceof FolderItem)) { throw new Error("Folder not found by id: ' + params.folderId + '"); }\n';
+    script += 'if (!folder || folder.numItems === undefined || folder.numLayers !== undefined) { throw new Error("Folder not found by id: ' + params.folderId + '"); }\n';
   } else {
     script += 'var folder = null;\n';
     script += 'for (var j = 1; j <= app.project.numItems; j++) {\n';
@@ -464,15 +474,127 @@ export function generateMoveProjectItem(params: {
 
   script += 'var fromName = (item.parentFolder === app.project.rootFolder) ? "(raiz)" : item.parentFolder.name;\n';
   script += 'item.parentFolder = folder;\n';
+  script += 'var toName = (folder === app.project.rootFolder) ? "(raiz)" : folder.name;\n';
 
   script += generateResultObject({
     success: 'true',
     item: 'item.name',
     from: 'fromName',
-    to: 'folder.name'
+    to: 'toName'
   });
 
   return wrapInUndoGroup(script, 'Move Project Item');
+}
+
+/**
+ * Generate script to rename one project item.
+ *
+ * There was no way to rename a folder or a comp from here, so the tidying of
+ * the project panel always ended with a list of renames for a human. AE exposes
+ * `Item.name` as writable, so it was only a missing tool.
+ *
+ * Renaming a COMP is not free: a layer that points at it keeps pointing at it,
+ * but expressions written as comp("Nombre") break silently, the same way
+ * renaming an effect broke three expressions of T02. That is why the result
+ * says how many layers use the item: the caller decides with the number in
+ * front, instead of finding out later.
+ */
+export function generateRenameProjectItem(params: {
+  itemId?: number;
+  itemName?: string;
+  newName: string;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+
+  if (params.itemId !== undefined) {
+    script += 'var item = app.project.itemByID(' + params.itemId + ');\n';
+    script += 'if (!item) { throw new Error("Item not found by id: ' + params.itemId + '"); }\n';
+  } else {
+    script += 'var item = null;\n';
+    script += 'for (var i = 1; i <= app.project.numItems; i++) {\n';
+    script += '  if (app.project.item(i).name === "' + escapeString(params.itemName || '') + '") { item = app.project.item(i); break; }\n';
+    script += '}\n';
+    script += 'if (!item) { throw new Error("Item not found: ' + escapeString(params.itemName || '') + '"); }\n';
+  }
+
+  script += 'var nuevo = "' + escapeString(params.newName) + '";\n';
+  script += 'if (nuevo === "") { throw new Error("newName is empty"); }\n';
+  // Two items with the same name inside one folder is how a project starts to lie.
+  script += 'var padre = item.parentFolder;\n';
+  script += 'for (var k = 1; k <= padre.numItems; k++) {\n';
+  script += '  if (padre.item(k) !== item && padre.item(k).name === nuevo) {\n';
+  script += '    throw new Error("Ya hay un item llamado \\"" + nuevo + "\\" en esa carpeta");\n';
+  script += '  }\n';
+  script += '}\n';
+  // How many layers point at it, so a rename is never blind.
+  script += 'var usos = 0;\n';
+  script += 'for (var c = 1; c <= app.project.numItems; c++) {\n';
+  script += '  var it = app.project.item(c);\n';
+  script += '  if (!(it instanceof CompItem)) continue;\n';
+  script += '  for (var L = 1; L <= it.numLayers; L++) {\n';
+  script += '    if (it.layer(L).source === item) usos++;\n';
+  script += '  }\n';
+  script += '}\n';
+  script += 'var antes = item.name;\n';
+  script += 'item.name = nuevo;\n';
+
+  script += generateResultObject({
+    success: 'true',
+    antes: 'antes',
+    ahora: 'item.name',
+    // ⚠️ NADA DE `instanceof` CON OBJETOS DE AE. Devolvia "comp" para una
+    // carpeta, asi que se distingue por lo que cada tipo tiene: una comp tiene
+    // capas, una carpeta tiene items, y lo demas es material.
+    tipo: '(item.numLayers !== undefined) ? "comp" : (item.numItems !== undefined) ? "carpeta" : "material"',
+    capasQueLoUsan: 'usos',
+    aviso: 'usos > 0 ? "lo usan " + usos + " capas: comprueba las expresiones que lo nombren por texto" : ""'
+  });
+
+  return wrapInUndoGroup(script, 'Rename Project Item');
+}
+
+/**
+ * Generate script to delete an EMPTY project folder.
+ *
+ * Deliberately only empty folders. Deleting a folder with something inside
+ * takes its contents with it, without asking, and this project already lost
+ * three null layers of T02 that way. If it has anything, this refuses and says
+ * what is in it.
+ */
+export function generateDeleteEmptyFolder(params: {
+  folderId?: number;
+  folderName?: string;
+}): string {
+  let script = '';
+  script += generateProjectCheck();
+
+  if (params.folderId !== undefined) {
+    script += 'var folder = app.project.itemByID(' + params.folderId + ');\n';
+  } else {
+    script += 'var folder = null;\n';
+    script += 'for (var i = 1; i <= app.project.numItems; i++) {\n';
+    script += '  var cand = app.project.item(i);\n';
+    script += '  if (cand instanceof FolderItem && cand.name === "' + escapeString(params.folderName || '') + '") { folder = cand; break; }\n';
+    script += '}\n';
+  }
+  // Mismo motivo que en rename: `instanceof` miente aqui. Una carpeta es lo
+  // unico que tiene numItems y no tiene capas.
+  script += 'if (!folder || folder.numItems === undefined || folder.numLayers !== undefined) { throw new Error("Folder not found"); }\n';
+  script += 'if (folder.numItems > 0) {\n';
+  script += '  var dentro = [];\n';
+  script += '  for (var j = 1; j <= folder.numItems; j++) dentro.push(folder.item(j).name);\n';
+  script += '  throw new Error("La carpeta no esta vacia, tiene " + folder.numItems + ": " + dentro.join(", "));\n';
+  script += '}\n';
+  script += 'var nombre = folder.name;\n';
+  script += 'folder.remove();\n';
+
+  script += generateResultObject({
+    success: 'true',
+    borrada: 'nombre'
+  });
+
+  return wrapInUndoGroup(script, 'Delete Empty Folder');
 }
 
 /**

@@ -27,7 +27,8 @@ export {
   generateSetActiveComposition,
   generateRenderFrame,
   generateGetCompReport,
-  generateDumpCompReport
+  generateDumpCompReport,
+  generateDumpAllComps
 } from './generators/compositionGenerators.js';
 
 // Layer generators
@@ -112,6 +113,8 @@ export {
   generateListProjectFolders,
   generateAuditProject,
   generateMoveProjectItem,
+  generateRenameProjectItem,
+  generateDeleteEmptyFolder,
   generateFindMissingFootage,
   generateCollectFiles,
   generateReduceProject,

@@ -235,6 +235,21 @@ const TOOLS = [
     generator: generators.generateGetCompReport
   },
   {
+    name: 'dump_all_comps',
+    description: 'Dump EVERY composition in the project to one JSON file each, in a single call. dump_comp_report is one comp per call, and a project with 159 comps then never gets fully refreshed: parts of the dump go stale and nothing says so. Writes <outDir>/<comp name>.json (slashes become dashes) and keeps going if one comp fails, returning the list of failures.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        outDir: { type: 'string', description: 'Absolute path of the folder to write into. Created if missing.' },
+        sampleTimes: { type: 'array', items: { type: 'number' }, description: 'Times in seconds to sample animated values' },
+        textPreview: { type: 'number', description: 'Max characters of text per layer (default 120)' },
+        soloNombre: { type: 'string', description: 'Only comps whose name contains this. For trying it on a few before the whole project.' }
+      },
+      required: ['outDir']
+    },
+    generator: generators.generateDumpAllComps
+  },
+  {
     name: 'dump_comp_report',
     description: 'Same full report as get_comp_report, but WRITTEN TO A FILE instead of returned. Use it to document many comps: the report is tens of thousands of characters and returning it through the MCP channel does not scale. Returns only the path and the byte count.',
     inputSchema: {
@@ -1419,10 +1434,37 @@ const TOOLS = [
         itemName: { type: 'string' },
         folderId: { type: 'number' },
         folderName: { type: 'string' },
-        createFolder: { type: 'boolean', description: 'Create the destination folder if it does not exist' }
+        createFolder: { type: 'boolean', description: 'Create the destination folder if it does not exist' },
+        toRoot: { type: 'boolean', description: 'Move the item to the project root instead of into a folder. The root is not reachable by name or id, so this is the only way out of a folder.' }
       }
     },
     generator: generators.generateMoveProjectItem
+  },
+  {
+    name: 'rename_project_item',
+    description: 'Rename ONE project item: a folder, a composition or a footage item. Refuses if the new name is already taken inside the same folder, and reports how many layers use the item, because renaming a comp breaks any expression that names it as text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'number' },
+        itemName: { type: 'string' },
+        newName: { type: 'string', description: 'The new name' }
+      },
+      required: ['newName']
+    },
+    generator: generators.generateRenameProjectItem
+  },
+  {
+    name: 'delete_empty_folder',
+    description: 'Delete a project folder ONLY if it is empty. A folder with something inside takes its contents with it when removed, so this refuses and lists what is in it instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        folderId: { type: 'number' },
+        folderName: { type: 'string' }
+      }
+    },
+    generator: generators.generateDeleteEmptyFolder
   },
   {
     name: 'organize_project_items',
